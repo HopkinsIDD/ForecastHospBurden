@@ -1,0 +1,50 @@
+---
+title: "EDA of ensemble data"
+author: "Sarah Cotton"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup}
+#install.packages("arrow")
+setwd("/Users/sarahcotton/Library/Mobile Documents/com~apple~CloudDocs/hopkins mph /NJDOH project/ForecastHospBurden-main/data")
+library(tidyverse)
+library(arrow)
+```
+
+```{r}
+# NJ file 
+NJ_Covid_hosp <- read_parquet("nj_covid_hosp.parquet", as_data_frame = TRUE)
+head(NJ_Covid_hosp)
+
+# covid19-scenario-modeling-hub Ensemble_LOP file 2023-04-16
+Ensemble_LOP <- read_parquet("ensemble_lop/2023-04-16-Ensemble_LOP.parquet", as_data_frame = TRUE)
+head(Ensemble_LOP)
+unique(Ensemble_LOP$target)
+unique(Ensemble_LOP$scenario_id)
+
+# covid19-scenario-modeling-hub Ensemble_LOP file 2022-12-04
+Ensemble_LOP_2022 <- read_csv("ensemble_lop/2022-12-04-Ensemble_LOP.csv")
+head(Ensemble_LOP_2022)
+unique(Ensemble_LOP_2022$target)
+```
+# creating new file with Inc Hosp 
+```{r}
+inc_hosp_Ensemble_LOP <- Ensemble_LOP %>% filter(target == "inc hosp")
+unique(inc_hosp_Ensemble_LOP$target)
+head(inc_hosp_Ensemble_LOP)
+write.csv(inc_hosp_Ensemble_LOP, "/Users/sarahcotton/Library/Mobile Documents/com~apple~CloudDocs/hopkins mph /NJDOH project/ForecastHospBurden-main/data/ensemble_lop/2023-04-16-Ensemble_LOP-Inc_Hosp.csv", row.names=TRUE)
+
+write_parquet(inc_hosp_Ensemble_LOP, "/Users/sarahcotton/Library/Mobile Documents/com~apple~CloudDocs/hopkins mph /NJDOH project/ForecastHospBurden-main/data/ensemble_lop/2023-04-16-Ensemble_LOP-Inc_Hosp.parquet")
+```
+
+# checking file exported correctly 
+```{r}
+
+
+Ensemble_LOP_Parquet <- read_parquet("ensemble_lop/2023-04-16-Ensemble_LOP-Inc_Hosp.parquet", as_data_frame = TRUE)
+head(Ensemble_LOP_Parquet)
+
+read_csv("ensemble_lop/2023-04-16-Ensemble_LOP-Inc_Hosp.csv")
+
+```
