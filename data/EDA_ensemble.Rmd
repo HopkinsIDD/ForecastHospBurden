@@ -7,44 +7,57 @@ output: html_document
 
 ```{r setup}
 #install.packages("arrow")
-
 library(tidyverse)
 library(arrow)
 ```
 
 ```{r}
-# NJ file 
+# NJ empirical file 
 NJ_Covid_hosp <- read_parquet("data/nj_covid_hosp.parquet", as_data_frame = TRUE)
 head(NJ_Covid_hosp)
 
 # covid19-scenario-modeling-hub Ensemble_LOP file 2023-04-16
+# using 2023 data, note-- export as parquet 
 Ensemble_LOP <- read_parquet("data/ensemble_lop/2023-04-16-Ensemble_LOP.parquet", as_data_frame = TRUE)
 head(Ensemble_LOP)
-unique(Ensemble_LOP$horizon)
-unique(Ensemble_LOP$scenario_id)
+unique(Ensemble_LOP$target)
 
 # covid19-scenario-modeling-hub Ensemble_LOP file 2022-12-04
-Ensemble_LOP_2022 <- read_csv("data/ensemble_lop/2022-12-04-Ensemble_LOP.csv")
-head(Ensemble_LOP_2022)
-unique(Ensemble_LOP_2022$target)
+# Ensemble_LOP_2022 <- read_csv("data/ensemble_lop/2022-12-04-Ensemble_LOP.csv")
+# head(Ensemble_LOP_2022)
+# unique(Ensemble_LOP_2022$target)
 ```
-# creating new file with Inc Hosp 
+
+# creating new parquet file with only Inc Hosp 
 ```{r}
 inc_hosp_Ensemble_LOP <- Ensemble_LOP %>% filter(target == "inc hosp")
 unique(inc_hosp_Ensemble_LOP$target)
 head(inc_hosp_Ensemble_LOP)
-write.csv(inc_hosp_Ensemble_LOP, "/Users/sarahcotton/Library/Mobile Documents/com~apple~CloudDocs/hopkins mph /NJDOH project/ForecastHospBurden-main/data/ensemble_lop/2023-04-16-Ensemble_LOP-Inc_Hosp.csv", row.names=TRUE)
 
-write_parquet(inc_hosp_Ensemble_LOP, "/Users/sarahcotton/Library/Mobile Documents/com~apple~CloudDocs/hopkins mph /NJDOH project/ForecastHospBurden-main/data/ensemble_lop/2023-04-16-Ensemble_LOP-Inc_Hosp.parquet")
+NJ_inc_hosp_Ensemble_LOP <- Ensemble_LOP %>% filter(target == "inc hosp", location == "34")
+unique(NJ_inc_hosp_Ensemble_LOP$location)
+# writing parquet not csv files 
+# write.csv(inc_hosp_Ensemble_LOP, "/Users/sarahcotton/Library/Mobile Documents/com~apple~CloudDocs/hopkins mph /NJDOH project/ForecastHospBurden-main/data/ensemble_lop/2023-04-16-Ensemble_LOP-Inc_Hosp.csv", row.names=TRUE)
+
+write_parquet(inc_hosp_Ensemble_LOP, "data/ensemble_lop/2023-04-16-Ensemble_LOP-Inc_Hosp.parquet")
+write_parquet(inc_hosp_Ensemble_LOP, "data/ensemble_lop/2023-04-16-Ensemble_LOP-Inc_Hosp-NJ.parquet")
 ```
 
-# checking file exported correctly 
+# checking file exported / imports correctly 
 ```{r}
+read_parquet("data/ensemble_lop/2023-04-16-Ensemble_LOP-Inc_Hosp.parquet", as_data_frame = TRUE)
 
-
-Ensemble_LOP_Parquet <- read_parquet("ensemble_lop/2023-04-16-Ensemble_LOP-Inc_Hosp.parquet", as_data_frame = TRUE)
-head(Ensemble_LOP_Parquet)
-
-read_csv("ensemble_lop/2023-04-16-Ensemble_LOP-Inc_Hosp.csv")
-
+# read_csv("ensemble_lop/2023-04-16-Ensemble_LOP-Inc_Hosp.csv")
 ```
+# visualization of inc hosp ensemble NJ 
+```{r}
+# location 34 NJ 
+inc_hosp_Ensemble_LOP %>% 
+  filter(location == 34) %>% 
+  select(horizon, value, type_id, scenario_id) %>% 
+  ggplot(aes(x = horizon, y = value, color = type_id)) + 
+  geom_line() +
+  facet_wrap(~scenario_id, nrow = 1)
+```
+
+
