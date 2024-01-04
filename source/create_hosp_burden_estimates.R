@@ -1,4 +1,4 @@
-
+#note
 
 
 # SETUP -------------------------------------------------------------------
@@ -19,6 +19,7 @@ opt <- list()
 opt$gt_data_source <- "hhs_hosp"
 opt$delphi_api_key <- "04e7369e1541a"
 opt$gt_data_path <- "data/nj_covid_hosp.parquet"
+opt$gt_ensemble_data_path <- "data/ensemble_lop/2023-04-16-Ensemble_LOP-Inc_Hosp.parquet"
 
 source("source/pull_empirical_data.R")
 
@@ -27,20 +28,35 @@ source("source/pull_empirical_data.R")
 # LOAD DATA ---------------------------------------------------------------
 
 # only need to run this if want to update data
-#nj_data <- arrow::read_parquet(opt$gt_data_path)
+nj_data <- arrow::read_parquet(opt$gt_data_path)
 
-
+ensemble_data <- arrow::read_parquet(opt$gt_ensemble_data_path)
 
 
 
 
 # PLOT DATA ---------------------------------------------------------------
 
-nj_data %>%
+# ensemble plot not very useful, not filtered to a state 
+# cowplot::plot_grid(
+#   nj_data %>%
+#     ggplot(aes(x = date, y = incidH, color = pathogen)) +
+#     geom_line() +
+#     facet_wrap(~source, ncol = 1),
+#   nj_ensemble_data %>%
+#     group_by(horizon) %>%
+#     summarize(mean_val = mean(value)) %>%
+#     ggplot(aes(x = horizon, y = mean_val)) +
+#     geom_line(),
+#   #facet_wrap(~location, ncol = 1)
+#   nrow = 2
+# )
+
+
+  nj_data %>%
     ggplot(aes(x = date, y = incidH, color = pathogen)) + 
     geom_line() +
     facet_wrap(~source, ncol = 1)
-
 
 
 
@@ -60,6 +76,18 @@ burden_est_funct <- function(incidH, date, hospstayfunct = covidhosp_stay_funct)
 }
 
 
+# ensemble data --------------------------------------------------------------
+
+# create function for selecting state 
+select_state <- function(state){
+  state_ensemble_data <- ensemble_data %>% 
+    filter(location == state) 
+  #return(state_ensemble_data)
+  state_ensemble_data
+}
+
+#filter state to NJ 
+select_state("34")
 
 
 # ~ COVID-19 --------------------------------------------------------------
