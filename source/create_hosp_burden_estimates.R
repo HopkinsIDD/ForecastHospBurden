@@ -76,19 +76,22 @@ burden_est_funct <- function(incidH, date, hospstayfunct = covidhosp_stay_funct)
 }
 
 
-# ensemble data --------------------------------------------------------------
+# ~ COVID-19 ensemble data --------------------------------------------------------------
 
-# create function for selecting state 
-select_state <- function(state){
-  state_ensemble_data <- ensemble_data %>% 
-    filter(location == state) 
-  #return(state_ensemble_data)
-  state_ensemble_data
+# create function for selecting state & scenario
+# median 
+select_parameters <- function(state, scenario){
+  parameters_ensemble_data <- ensemble_data %>%
+    filter(location == state,
+           scenario_id == scenario) %>%
+    group_by(horizon, scenario_id, target, origin_date, location, type) %>%
+    summarize(mdn_incidH = median(value))
+  return(parameters_ensemble_data)
 }
 
-#filter state to NJ 
-select_state("34")
+#filter state to NJ, scenario to A 
 
+NJ_A_ensemble_data <- select_parameters(state = "34", scenario = "A-2023-04-16")
 
 # ~ COVID-19 --------------------------------------------------------------
 
@@ -107,6 +110,8 @@ for (i in 1:nrow(covid_data)){
                              hospstayfunct = covidhosp_stay_funct)
         )
 }
+
+
 
 nj_data_burden_covid <- nj_data_burden %>%
     bind_rows() %>%
