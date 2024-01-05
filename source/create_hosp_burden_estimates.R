@@ -79,19 +79,49 @@ burden_est_funct <- function(incidH, date, hospstayfunct = covidhosp_stay_funct)
 # ~ COVID-19 ensemble data --------------------------------------------------------------
 
 # create function for selecting state & scenario
-# median 
+# df returns median incidence hosp 
 select_parameters <- function(state, scenario){
   parameters_ensemble_data <- ensemble_data %>%
     filter(location == state,
            scenario_id == scenario) %>%
     group_by(horizon, scenario_id, target, origin_date, location, type) %>%
-    summarize(mdn_incidH = median(value))
+    summarize(mdn_incidH = median(value)) %>% 
+    # convert horizon to date for burden_est_funct
+    mutate(date = as_date(origin_date + horizon*7))
   return(parameters_ensemble_data)
 }
+
 
 #filter state to NJ, scenario to A 
 
 NJ_A_ensemble_data <- select_parameters(state = "34", scenario = "A-2023-04-16")
+
+# creating current hosp of ensemble data 
+NJ_A_ensemble_data_burden <- list()
+
+for (i in 1:nrow(NJ_A_ensemble_data)){
+  
+  NJ_A_ensemble_data_burden[[i]] <- NJ_A_ensemble_data[i, ] %>%
+    # need to think about date 
+    rename(admit_date = date) %>%
+    expand_grid(hosp_dates = 
+                  burden_est_funct(incidH = NJ_A_ensemble_data$mdn_incidH[i], 
+                                   date = NJ_A_ensemble_data$date[i], 
+                                   hospstayfunct = covidhosp_stay_funct)
+    )
+}
+
+NJ_A_ensemble_data_burden_covid <- NJ_A_ensemble_data_burden %>%
+  bind_rows() %>%
+  select(-admit_date, -mdn_incidH) %>%
+  group_by(location, scenario_id, origin_date, type, hosp_dates) %>%
+  summarise(curr_hosp = length(hosp_dates)) %>%
+  ungroup()
+
+NJ_A_ensemble_data_burden_covid %>%
+  ggplot(aes(x = hosp_dates, y = curr_hosp)) + 
+  geom_line() 
+
 
 # ~ COVID-19 --------------------------------------------------------------
 
@@ -120,6 +150,9 @@ nj_data_burden_covid <- nj_data_burden %>%
     summarise(curr_hosp = length(hosp_dates)) %>%
     ungroup()
 
+nj_data_burden_covid %>%
+  ggplot(aes(x = hosp_dates, y = curr_hosp)) + 
+  geom_line() 
 
 # ~ Influenza --------------------------------------------------------------
 
