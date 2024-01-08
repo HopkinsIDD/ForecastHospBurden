@@ -37,7 +37,7 @@ ensemble_data <- arrow::read_parquet(opt$gt_ensemble_data_path)
 
 # PLOT DATA ---------------------------------------------------------------
 
-# ensemble plot not very useful, not filtered to a state 
+# ensemble plot not very useful, not filtered to a state / secenario 
 # cowplot::plot_grid(
 #   nj_data %>%
 #     ggplot(aes(x = date, y = incidH, color = pathogen)) +
@@ -78,19 +78,19 @@ burden_est_funct <- function(incidH, date, hospstayfunct = covidhosp_stay_funct)
 
 # ~ COVID-19 ensemble data --------------------------------------------------------------
 
-# create function for selecting state & scenario
+# create function for selecting state & scenario from ensemble data
+
 # function requires code for state and scenario id from covid19-scenario-modeling-hub Ensemble_LOP file 2023-04-16
 # returns data frame for specific state (ie: NJ) and scenario (ie: A-2023-04-16) with projection date and median incidence hospitalizations
 select_parameters <- function(state, scenario){
   parameters_ensemble_data <- ensemble_data %>%
     filter(location == state,
            scenario_id == scenario) %>%
+    # convert horizon to date for burden_est function
     mutate(date = as_date(origin_date + horizon*7)) %>% 
     group_by(date, scenario_id, target, origin_date, location, type) %>%
     # update var name to incidH for hosp functions
-    summarize(incidH = median(value)) %>% 
-    # convert horizon to date for burden_est_funct %>% 
-    # keeping horizon made issue in create_curr_hosp
+    summarize(incidH = median(value)) 
 
     
   return(parameters_ensemble_data)
@@ -135,8 +135,14 @@ covid_data <- nj_data %>%
     filter(pathogen == "COVID-19") %>%
     filter(!is.na(incidH) & incidH>0)
 
+# ~ Influenza --------------------------------------------------------------
 
-# create hosp_dates function for empirical and ensemble data 
+flu_data <- nj_data %>%
+  filter(pathogen == "Influenza") %>%
+  filter(!is.na(incidH) & incidH>0)
+
+# ~ Functions for Empirical and Ensemble data --------------------------------------
+
 # function requires dataframe with incidence Hosp of COVID-19 (empirical or ensemble) 
 # returns list with hosp_dates to be used in create_curr_hosp function 
 create_hosp_dates <- function(data){
@@ -149,6 +155,8 @@ create_hosp_dates <- function(data){
       expand_grid(hosp_dates = 
                     burden_est_funct(incidH = data$incidH[i], 
                                      date = data$date[i], 
+                                     # can flu data be read into this function..?
+                                     #fluhosp_stay_funct
                                      hospstayfunct = covidhosp_stay_funct)
       )
   }
@@ -180,6 +188,7 @@ nj_data_burden_covid %>%
   ggplot(aes(x = hosp_dates, y = curr_hosp)) +
   geom_line()
 
+#note: graph x-axis is shorter if use horizon instead of date
 NJ_A_ensemble_data_burden_covid %>%
   ggplot(aes(x = hosp_dates, y = curr_hosp)) +
   geom_line()
@@ -264,15 +273,20 @@ cowplot::plot_grid(
         ggplot(aes(x = date, y = incidH, color = pathogen)) + 
         geom_line() +
         theme_bw() +
-        theme(legend.position = c(.8,.8)) +
-        ggtitle("Daily Hospital Admissions"),
+        theme(legend.position = c(.9,.5)) +
+        ggtitle("Empirical Daily Hospital Admissions"),
     nj_data_burden %>%
         ggplot(aes(x = date, y = curr_hosp, color = pathogen)) + 
         geom_line() +
         theme_bw() +
-        theme(legend.position = c(.8,.8)) +
-        ggtitle("Daily Hospital Burden"),
-    nrow = 2)
+        theme(legend.position = c(.9,.5)) +
+        ggtitle("Empirical Daily Hospital Burden"),
+    NJ_A_ensemble_data_burden_covid %>%
+      ggplot(aes(x = hosp_dates, y = curr_hosp)) +
+      geom_line() +
+      theme(legend.position = c(.8,.8)) +
+      ggtitle("Ensemble Daily COVID Hospital Burden"),
+    nrow = 3)
 
 
 
