@@ -15,10 +15,10 @@ library(flepicommon)
 # source data functions
 source("source/data_setup_source.R")
 
-opt <- list()
-opt$gt_data_source <- "hhs_hosp"
-opt$delphi_api_key <- "04e7369e1541a"
-opt$gt_data_path <- "data/nj_covid_hosp.parquet"
+# opt <- list()
+# opt$gt_data_source <- "hhs_hosp"
+# opt$delphi_api_key <- "04e7369e1541a"
+# opt$gt_data_path <- "data/nj_covid_hosp.parquet"
 
 # SET DELPHI API KEY ------------------------------------------------------
 

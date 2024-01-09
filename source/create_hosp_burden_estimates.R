@@ -25,6 +25,59 @@ source("source/pull_empirical_data.R")
 
 
 
+# convert weekly to daily data -- weekly causes weird oscillations
+
+make_daily_data <- function(data = gt_formatted_counts,
+                            current_timescale = "week"){
+  
+  if (current_timescale != "week") stop("Only weeks implemented currently")
+  
+  data <- data %>%
+    # mutate(Update = lubridate::floor_date(Update , "weeks")) %>%
+    pivot_longer(cols = starts_with("incid"), names_to = "outcome", values_to = "value") %>%
+    # filter(!is.na(value)) %>%
+    group_by(across(-c(date, value))) %>%
+    # group_by(subpop, age_group, outcome, season) %>%
+    arrange(date) %>%
+    mutate(value_cum = cumsum(value)) %>%
+    ungroup() %>%
+    mutate(date_num = as.integer(date))
+  
+  data %>%
+    group_by(across(-c(date, value, value_cum, date_num))) %>%
+    group_split() %>%
+    map_dfr(~get_spline_daily(grp_dat = .)) %>%
+    mutate(value = ifelse(value < 0, 0, value)) %>%
+    pivot_wider(names_from = outcome, values_from = value) %>%
+    dplyr::select(date, subpop, starts_with("incid"), starts_with("cum"))
+}
+
+
+
+get_spline_daily <- function(grp_dat) {
+  
+  smth <- stats::splinefun(x = grp_dat$date_num, y = grp_dat$value_cum, method="monoH.FC")
+  preds <- grp_dat %>%
+    dplyr::select(-c(date, value, value_cum, date_num)) %>%
+    distinct() %>%
+    expand_grid(date = seq.Date(min(grp_dat$date), (max(grp_dat$date)+6), by="1 day")) %>%
+    mutate(date_num = as.integer(date))
+  preds <- preds %>% mutate(value = smth(x = date_num))
+  
+  preds <- preds %>%
+    mutate(outcome = gsub("incid", "cum", outcome)) %>%
+    bind_rows(preds %>%
+                dplyr::arrange(date, subpop, outcome) %>%
+                mutate(value = diff(c(0, value))))
+  return(preds)
+}
+
+
+
+
+
+
+
 # LOAD DATA ---------------------------------------------------------------
 
 # only need to run this if want to update data
@@ -163,8 +216,7 @@ create_hosp_dates <- function(data){
   return(data_burden)
 }
 
-nj_data_burden <- create_hosp_dates(data = covid_data) 
-NJ_A_ensemble_data_burden <- create_hosp_dates(data = NJ_A_ensemble_data)
+
 
 # current hospitalization function for empirical and ensemble data 
 # function requires data burden list from create_hosp_dates function 
@@ -172,12 +224,65 @@ NJ_A_ensemble_data_burden <- create_hosp_dates(data = NJ_A_ensemble_data)
 create_curr_hosp <- function(data_burden){
   new_data_burden <- data_burden %>%
     bind_rows() %>%
-    select(-admit_date, -incidH) %>%
+    as_tibble() %>%
+    dplyr::select(-admit_date, -incidH) %>%
     group_by_all() %>%
     summarise(curr_hosp = length(hosp_dates)) %>%
     ungroup()
   return(new_data_burden)
 }
+
+
+
+# Make data daily 
+
+# add a week of zeros before if none exists so interpolation spline works properly
+NJ_A_ensemble_data_daily_1 <- NJ_A_ensemble_data %>% 
+  group_by(location, type, scenario_id, target, origin_date) %>% 
+  mutate(first_date = min(date)) %>%
+  filter(date == first_date & incidH != 0) %>%
+  mutate(date2 = date - 7, incidH0 = 0) %>%
+  ungroup() %>%
+  select(date = date2, location, type, scenario_id, target, origin_date, incidH = incidH0)
+
+NJ_A_ensemble_data_daily <- NJ_A_ensemble_data_daily_1 %>% rbind(NJ_A_ensemble_data) %>%
+    rename(subpop = location)
+
+## fill in values for each day
+NJ_A_ensemble_data_daily <- make_daily_data(data = NJ_A_ensemble_data_daily, current_timescale = "week") 
+NJ_A_ensemble_data_daily <- NJ_A_ensemble_data_daily %>% filter(!(date %in% NJ_A_ensemble_data_daily_1$date)) %>%
+    rename(location = subpop)
+
+# gt_formatted_counts <- gt_formatted_counts %>% 
+#   dplyr::group_by(subpop, age_group) %>%
+#   tidyr::complete(date = seq.Date(min(date), max(date), by="day")) %>%  # fill in missing days
+#   # mutate_if(is.numeric, ~replace(., is.na(.), 0)) %>% # set outcome variables values on those days to zero
+#   mutate_if(is.numeric, ~ rollmean(., 7, fill = "extend", align ='left')) # calculate rolling seven day average
+
+#write.csv(gt_formatted, "data/rsvnet_sample_data.csv", row.names = FALSE)
+
+# Check hospitalization counts timeseries
+NJ_A_ensemble_data_daily %>% 
+  ggplot() + 
+  geom_line(aes(date, incidH, colour = location)) +
+  # facet_wrap(~subpop, scales = 'free_y') +
+  ylab('daily hosp counts')+
+  theme_bw() 
+NJ_A_ensemble_data %>% 
+  ggplot() + 
+  geom_line(aes(date, incidH, colour = location)) +
+  # facet_wrap(~subpop, scales = 'free_y') +
+  ylab('daily hosp counts')+
+  theme_bw() 
+
+
+
+
+
+# Calculate burden --------------------------------------------------------
+
+nj_data_burden <- create_hosp_dates(data = covid_data) 
+NJ_A_ensemble_data_burden <- create_hosp_dates(data = NJ_A_ensemble_data_daily %>% dplyr::select(-cumH))
 
 nj_data_burden_covid <- create_curr_hosp(data_burden = nj_data_burden)
 NJ_A_ensemble_data_burden_covid <- create_curr_hosp(data_burden = NJ_A_ensemble_data_burden)
