@@ -151,9 +151,25 @@ select_parameters <- function(state, scenario){
   return(parameters_covid_ensemble_data)
 }
 
-
 #filter state to NJ, scenario to A 
 NJ_A_covid_ensemble_data <- select_parameters(state = "34", scenario = "A-2023-04-16")
+
+select_parameters_2 <- function(state){
+  parameters_covid_ensemble_data <- covid_ensemble_data %>%
+    filter(location == state,
+           type_id == 0.950 | type_id == 0.500) %>%
+    # convert horizon to date for burden_est function
+    mutate(date = as_date(origin_date + horizon*7)) %>% 
+    group_by(date, scenario_id, target, origin_date, location, type, type_id) %>%
+    # update var name to incidH for hosp functions
+    rename(incidH = value) 
+  
+  
+  return(parameters_covid_ensemble_data)
+}
+
+
+NJ_covid_ensemble_data <- select_parameters_2(state = "34")
 
 
 
