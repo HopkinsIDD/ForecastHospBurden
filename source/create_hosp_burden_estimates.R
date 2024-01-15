@@ -154,8 +154,9 @@ select_parameters <- function(state, scenario){
 #filter state to NJ, scenario to A 
 NJ_A_covid_ensemble_data <- select_parameters(state = "34", scenario = "A-2023-04-16")
 
-select_parameters_2 <- function(state){
-  parameters_covid_ensemble_data <- covid_ensemble_data %>%
+
+select_parameters_2 <- function(state, data){
+  parameters_ensemble_data <- data %>%
     filter(location == state,
            type_id == 0.950 | type_id == 0.500) %>%
     # convert horizon to date for burden_est function
@@ -165,12 +166,12 @@ select_parameters_2 <- function(state){
     rename(incidH = value) 
   
   
-  return(parameters_covid_ensemble_data)
+  return(parameters_ensemble_data)
 }
 
 
-NJ_covid_ensemble_data <- select_parameters_2(state = "34")
-
+NJ_covid_ensemble_data <- select_parameters_2(state = "34", data = covid_ensemble_data)
+NJ_flu_ensemble_data <- select_parameters_2(state = "34", data = flu_ensemble_data)
 
 
 # creating current hosp of ensemble data 
@@ -248,7 +249,8 @@ select_flu_parameters <- function(state){
 }
 
 #filter state to NJ
-NJ_flu_ensemble_data <- select_flu_parameters(state = "34")
+# new select parameters function 
+# NJ_flu_ensemble_data <- select_flu_parameters(state = "34")
 
 # ~ Functions for Empirical and Ensemble data --------------------------------------
 
