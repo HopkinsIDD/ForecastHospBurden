@@ -53,10 +53,9 @@ make_daily_data <- function(data = gt_formatted_counts,
     dplyr::select(date, subpop, starts_with("incid"), starts_with("cum"))
 }
 
-
-
 get_spline_daily <- function(grp_dat) {
   
+  # won't run with multiple CI's and scenarios
   smth <- stats::splinefun(x = grp_dat$date_num, y = grp_dat$value_cum, method="monoH.FC")
   preds <- grp_dat %>%
     dplyr::select(-c(date, value, value_cum, date_num)) %>%
@@ -343,7 +342,7 @@ NJ_A_ensemble_data_daily <- NJ_A_ensemble_data_daily_1 %>% rbind(NJ_A_covid_ense
     rename(subpop = location)
 
 ## add week 0 function for covid & flu 
-create_week_0_dataset <- function(data){
+create_week_0 <- function(data){
   data_daily_1 <- data %>% 
     group_by(location, type, target, origin_date) %>% 
     mutate(first_date = min(date)) %>%
@@ -351,22 +350,35 @@ create_week_0_dataset <- function(data){
     mutate(date = date - 7, incidH = 0) %>% 
     select(-first_date)
   
+  return(data_daily_1)
+}
+
+NJ_flu_ensemble_data_daily_1 <- create_week_0(data = NJ_flu_ensemble_data)
+NJ_covid_ensemble_data_daily_1 <- create_week_0(data = NJ_covid_ensemble_data)
+
+add_week_0_data <- function(data_daily_1, data){
+  
   data_daily <- data_daily_1 %>% rbind(data) %>% 
     rename(subpop = location)
   
   return(data_daily)
 }
 
-NJ_flu_ensemble_data_daily <- create_week_0_dataset(data = NJ_flu_ensemble_data)
-NJ_covid_ensemble_data_daily <- create_week_0_dataset(data = NJ_covid_ensemble_data)
-  
+NJ_flu_ensemble_data_daily <- add_week_0_data(data_daily_1 = NJ_flu_ensemble_data_daily_1, data = NJ_flu_ensemble_data)
+NJ_covid_ensemble_data_daily <- add_week_0_data(data_daily_1 = NJ_covid_ensemble_data_daily_1, data = NJ_covid_ensemble_data)
+
 ## fill in values for each day
+
 NJ_A_ensemble_data_daily <- make_daily_data(data = NJ_A_ensemble_data_daily, current_timescale = "week") 
 NJ_A_ensemble_data_daily <- NJ_A_ensemble_data_daily %>% filter(!(date %in% NJ_A_ensemble_data_daily_1$date)) %>%
     rename(location = subpop)
 
+NJ_covid_ensemble_data_daily <- make_daily_data(data = NJ_covid_ensemble_data_daily, current_timescale = "week") 
+NJ_covid_ensemble_data_daily <- NJ_covid_ensemble_data_daily %>% filter(!(date %in% NJ_covid_ensemble_data_daily_1$date)) %>%
+  rename(location = subpop)
+
 NJ_flu_ensemble_data_daily <- make_daily_data(data = NJ_flu_ensemble_data_daily, current_timescale = "week") 
-NJ_flu_ensemble_data_daily <- NJ_flu_ensemble_data_daily %>% filter(!(date %in% NJ_flu_data_daily_1$date)) %>%
+NJ_flu_ensemble_data_daily <- NJ_flu_ensemble_data_daily %>% filter(!(date %in% NJ_flu_ensemble_data_daily_1$date)) %>%
   rename(location = subpop)
 # gt_formatted_counts <- gt_formatted_counts %>% 
 #   dplyr::group_by(subpop, age_group) %>%
