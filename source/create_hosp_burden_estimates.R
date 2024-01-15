@@ -88,7 +88,12 @@ covid_ensemble_data <- arrow::read_parquet(opt$gt_covid_ensemble_data_path)
 
 flu_ensemble_data <- arrow::read_parquet(opt$gt_flu_ensemble_data_path)
 
+# updating flu ensemble colnames
 
+flu_ensemble_data <- flu_ensemble_data %>% 
+  rename(origin_date = reference_date,
+         type = output_type,
+         type_id = output_type_id)
 
 # PLOT DATA ---------------------------------------------------------------
 
