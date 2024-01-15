@@ -166,7 +166,7 @@ select_parameters_2 <- function(state, data){
            type_id == 0.950 | type_id == 0.500) %>%
     # convert horizon to date for burden_est function
     mutate(date = as_date(origin_date + horizon*7)) %>% 
-    group_by(date, scenario_id, target, origin_date, location, type, type_id) %>%
+    group_by_all() %>%
     # update var name to incidH for hosp functions
     rename(incidH = value) 
   
@@ -342,19 +342,24 @@ NJ_A_ensemble_data_daily_1 <- NJ_A_covid_ensemble_data %>%
 NJ_A_ensemble_data_daily <- NJ_A_ensemble_data_daily_1 %>% rbind(NJ_A_covid_ensemble_data) %>%
     rename(subpop = location)
 
-## flu 
+## add week 0 function for covid & flu 
+create_week_0_dataset <- function(data){
+  data_daily_1 <- data %>% 
+    group_by(location, type, target, origin_date) %>% 
+    mutate(first_date = min(date)) %>%
+    filter(date == first_date & incidH != 0) %>%
+    mutate(date = date - 7, incidH = 0) %>% 
+    select(-first_date)
+  
+  data_daily <- data_daily_1 %>% rbind(data) %>% 
+    rename(subpop = location)
+  
+  return(data_daily)
+}
 
-NJ_flu_data_daily_1 <- NJ_flu_ensemble_data %>% 
-  group_by(location, output_type, target, reference_date) %>% 
-  mutate(first_date = min(date)) %>%
-  filter(date == first_date & incidH != 0) %>%
-  mutate(date2 = date - 7, incidH0 = 0) %>%
-  ungroup() %>%
-  select(date = date2, location, output_type, target, reference_date, incidH = incidH0)
-
-NJ_flu_ensemble_data_daily <- NJ_flu_data_daily_1 %>% rbind(NJ_flu_ensemble_data) %>% 
-  rename(subpop = location)
-
+NJ_flu_ensemble_data_daily <- create_week_0_dataset(data = NJ_flu_ensemble_data)
+NJ_covid_ensemble_data_daily <- create_week_0_dataset(data = NJ_covid_ensemble_data)
+  
 ## fill in values for each day
 NJ_A_ensemble_data_daily <- make_daily_data(data = NJ_A_ensemble_data_daily, current_timescale = "week") 
 NJ_A_ensemble_data_daily <- NJ_A_ensemble_data_daily %>% filter(!(date %in% NJ_A_ensemble_data_daily_1$date)) %>%
