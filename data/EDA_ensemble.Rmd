@@ -60,4 +60,15 @@ inc_hosp_Ensemble_LOP %>%
   facet_wrap(~scenario_id, nrow = 1)
 ```
 
+# FLU
+
+```{r}
+flusight <- read_csv("data/2024-01-06-FluSight-ensemble.csv")
+head(flusight)
+flusight <- flusight %>% 
+  filter(target == "wk inc flu hosp")
+
+write_parquet(flusight, "data/2024-01-06-FluSight-ensemble.parquet")
+
+```
 

@@ -19,7 +19,8 @@ opt <- list()
 opt$gt_data_source <- "hhs_hosp"
 opt$delphi_api_key <- "04e7369e1541a"
 opt$gt_data_path <- "data/nj_covid_hosp.parquet"
-opt$gt_ensemble_data_path <- "data/ensemble_lop/2023-04-16-Ensemble_LOP-Inc_Hosp.parquet"
+opt$gt_covid_ensemble_data_path <- "data/ensemble_lop/2023-04-16-Ensemble_LOP-Inc_Hosp.parquet"
+opt$gt_flu_ensemble_data_path <- "data/2024-01-06-FluSight-ensemble.parquet"
 
 source("source/pull_empirical_data.R")
 
@@ -53,9 +54,9 @@ make_daily_data <- function(data = gt_formatted_counts,
 }
 
 
-
 get_spline_daily <- function(grp_dat) {
   
+  # won't run with multiple CI's and scenarios
   smth <- stats::splinefun(x = grp_dat$date_num, y = grp_dat$value_cum, method="monoH.FC")
   preds <- grp_dat %>%
     dplyr::select(-c(date, value, value_cum, date_num)) %>%
@@ -83,10 +84,16 @@ get_spline_daily <- function(grp_dat) {
 # only need to run this if want to update data
 nj_data <- arrow::read_parquet(opt$gt_data_path)
 
-ensemble_data <- arrow::read_parquet(opt$gt_ensemble_data_path)
+covid_ensemble_data <- arrow::read_parquet(opt$gt_covid_ensemble_data_path)
 
+flu_ensemble_data <- arrow::read_parquet(opt$gt_flu_ensemble_data_path)
 
+# updating flu ensemble colnames
 
+flu_ensemble_data <- flu_ensemble_data %>% 
+  rename(origin_date = reference_date,
+         type = output_type,
+         type_id = output_type_id)
 
 # PLOT DATA ---------------------------------------------------------------
 
@@ -136,7 +143,7 @@ burden_est_funct <- function(incidH, date, hospstayfunct = covidhosp_stay_funct)
 # function requires code for state and scenario id from covid19-scenario-modeling-hub Ensemble_LOP file 2023-04-16
 # returns data frame for specific state (ie: NJ) and scenario (ie: A-2023-04-16) with projection date and median incidence hospitalizations
 select_parameters <- function(state, scenario){
-  parameters_ensemble_data <- ensemble_data %>%
+  parameters_covid_ensemble_data <- covid_ensemble_data %>%
     filter(location == state,
            scenario_id == scenario) %>%
     # convert horizon to date for burden_est function
@@ -146,38 +153,55 @@ select_parameters <- function(state, scenario){
     summarize(incidH = median(value)) 
 
     
+  return(parameters_covid_ensemble_data)
+}
+
+#filter state to NJ, scenario to A 
+NJ_A_covid_ensemble_data <- select_parameters(state = "34", scenario = "A-2023-04-16")
+
+
+select_parameters_2 <- function(state, data){
+  parameters_ensemble_data <- data %>%
+    filter(location == state,
+           type_id == 0.950 | type_id == 0.500) %>%
+    # convert horizon to date for burden_est function
+    mutate(date = as_date(origin_date + horizon*7)) %>% 
+    group_by_all() %>%
+    # update var name to incidH for hosp functions
+    rename(incidH = value) 
+  
+  
   return(parameters_ensemble_data)
 }
 
 
-#filter state to NJ, scenario to A 
-NJ_A_ensemble_data <- select_parameters(state = "34", scenario = "A-2023-04-16")
-
+NJ_covid_ensemble_data <- select_parameters_2(state = "34", data = covid_ensemble_data)
+NJ_flu_ensemble_data <- select_parameters_2(state = "34", data = flu_ensemble_data)
 
 
 # creating current hosp of ensemble data 
-# NJ_A_ensemble_data_burden <- list()
+# NJ_A_covid_ensemble_data_burden <- list()
 # 
-# for (i in 1:nrow(NJ_A_ensemble_data)){
+# for (i in 1:nrow(NJ_A_covid_ensemble_data)){
 #   
-#   NJ_A_ensemble_data_burden[[i]] <- NJ_A_ensemble_data[i, ] %>%
+#   NJ_A_covid_ensemble_data_burden[[i]] <- NJ_A_covid_ensemble_data[i, ] %>%
 #     # need to think about date 
 #     rename(admit_date = date) %>%
 #     expand_grid(hosp_dates = 
-#                   burden_est_funct(incidH = NJ_A_ensemble_data$mdn_incidH[i], 
-#                                    date = NJ_A_ensemble_data$date[i], 
+#                   burden_est_funct(incidH = NJ_A_covid_ensemble_data$mdn_incidH[i], 
+#                                    date = NJ_A_covid_ensemble_data$date[i], 
 #                                    hospstayfunct = covidhosp_stay_funct)
 #     )
 # }
 
-# NJ_A_ensemble_data_burden_covid <- NJ_A_ensemble_data_burden %>%
+# NJ_A_covid_ensemble_data_burden_covid <- NJ_A_covid_ensemble_data_burden %>%
 #   bind_rows() %>%
 #   select(-admit_date, -mdn_incidH) %>%
 #   group_by(location, scenario_id, origin_date, type, hosp_dates) %>%
 #   summarise(curr_hosp = length(hosp_dates)) %>%
 #   ungroup()
 # 
-# NJ_A_ensemble_data_burden_covid %>%
+# NJ_A_covid_ensemble_data_burden_covid %>%
 #   ggplot(aes(x = hosp_dates, y = curr_hosp)) + 
 #   geom_line() 
 # 
@@ -194,10 +218,50 @@ flu_data <- nj_data %>%
   filter(pathogen == "Influenza") %>%
   filter(!is.na(incidH) & incidH>0)
 
+# nj_data_burden <- list()
+# for (i in 1:nrow(flu_data)){
+  
+#   nj_data_burden[[i]] <- flu_data[i, ] %>%
+#     rename(admit_date = date) %>%
+#     expand_grid(hosp_dates = 
+#                   burden_est_funct(incidH = flu_data$incidH[i], 
+#                                    date = flu_data$date[i], 
+#                                    hospstayfunct = fluhosp_stay_funct)
+#     )
+# }
+# nj_data_burden_flu <- nj_data_burden %>%
+#   bind_rows() %>%
+#   select(-admit_date, -incidH) %>%
+#   group_by(source, FIPS, pathogen, hosp_dates) %>%
+#   summarise(curr_hosp = length(hosp_dates)) %>%
+#   ungroup()
+# 
+
+# ~ Influenza Ensemble Data --------------------------------------------------
+
+#forecast goes 3 weeks out, do we want to use this dataset? 
+select_flu_parameters <- function(state){
+  parameters_flu_ensemble_data <- flu_ensemble_data %>%
+    filter(location == state) %>%
+    # convert horizon to date for burden_est function
+    mutate(date = as_date(reference_date + horizon*7)) %>% 
+    group_by(date, target, reference_date, location, output_type) %>%
+    # update var name to incidH for hosp functions
+    summarize(incidH = median(value)) 
+  
+  
+  return(parameters_flu_ensemble_data)
+}
+
+#filter state to NJ
+# new select parameters function 
+# NJ_flu_ensemble_data <- select_flu_parameters(state = "34")
+
 # ~ Functions for Empirical and Ensemble data --------------------------------------
 
 # function requires dataframe with incidence Hosp of COVID-19 (empirical or ensemble) 
 # returns list with hosp_dates to be used in create_curr_hosp function 
+
 create_hosp_dates <- function(data){
   data_burden <- list()
   
@@ -208,14 +272,44 @@ create_hosp_dates <- function(data){
       expand_grid(hosp_dates = 
                     burden_est_funct(incidH = data$incidH[i], 
                                      date = data$date[i], 
-                                     # can flu data be read into this function..?
+                                     # think about how to write this better 
                                      #fluhosp_stay_funct
-                                     hospstayfunct = covidhosp_stay_funct)
+                                     hospstayfunct = covidhosp_stay_funct
+                                     )
+      
       )
   }
   return(data_burden)
 }
 
+
+create_hosp_dates_flu <- function(data){
+  data_burden <- list()
+  
+  for (i in 1:nrow(data)){
+    
+    data_burden[[i]] <- data[i, ] %>%
+      rename(admit_date = date) %>%
+      expand_grid(hosp_dates = 
+                    burden_est_funct(incidH = data$incidH[i], 
+                                     date = data$date[i], 
+                                     # think about how to write this better 
+                                     #fluhosp_stay_funct
+                                     hospstayfunct = fluhosp_stay_funct
+                    )
+                  
+      )
+  }
+  return(data_burden)
+}
+# think about how to write this better 
+#fluhosp_stay_funct
+
+# if ( data == "NJ_flu_ensemble_data" | data == "flu_data") {
+#   return(hospstayfunct = fluhosp_stay_funct)
+# } else{
+#   return(hospstayfunct = covidhosp_stay_funct)
+# }
 
 
 # current hospitalization function for empirical and ensemble data 
@@ -237,7 +331,9 @@ create_curr_hosp <- function(data_burden){
 # Make data daily 
 
 # add a week of zeros before if none exists so interpolation spline works properly
-NJ_A_ensemble_data_daily_1 <- NJ_A_ensemble_data %>% 
+
+## covid
+NJ_A_ensemble_data_daily_1 <- NJ_A_covid_ensemble_data %>% 
   group_by(location, type, scenario_id, target, origin_date) %>% 
   mutate(first_date = min(date)) %>%
   filter(date == first_date & incidH != 0) %>%
@@ -245,14 +341,51 @@ NJ_A_ensemble_data_daily_1 <- NJ_A_ensemble_data %>%
   ungroup() %>%
   select(date = date2, location, type, scenario_id, target, origin_date, incidH = incidH0)
 
-NJ_A_ensemble_data_daily <- NJ_A_ensemble_data_daily_1 %>% rbind(NJ_A_ensemble_data) %>%
+
+NJ_A_ensemble_data_daily <- NJ_A_ensemble_data_daily_1 %>% rbind(NJ_A_covid_ensemble_data) %>%
     rename(subpop = location)
 
+## add week 0 function for covid & flu 
+create_week_0 <- function(data){
+  data_daily_1 <- data %>% 
+    group_by(location, type, target, origin_date) %>% 
+    mutate(first_date = min(date)) %>%
+    filter(date == first_date & incidH != 0) %>%
+    mutate(date = date - 7, incidH = 0) %>% 
+    select(-first_date)
+  
+  return(data_daily_1)
+}
+
+NJ_flu_ensemble_data_daily_1 <- create_week_0(data = NJ_flu_ensemble_data)
+NJ_covid_ensemble_data_daily_1 <- create_week_0(data = NJ_covid_ensemble_data)
+
+add_week_0_data <- function(data_daily_1, data){
+  
+  data_daily <- data_daily_1 %>% rbind(data) %>% 
+    rename(subpop = location)
+  
+  return(data_daily)
+}
+
+NJ_flu_ensemble_data_daily <- add_week_0_data(data_daily_1 = NJ_flu_ensemble_data_daily_1, data = NJ_flu_ensemble_data)
+NJ_covid_ensemble_data_daily <- add_week_0_data(data_daily_1 = NJ_covid_ensemble_data_daily_1, data = NJ_covid_ensemble_data)
+
 ## fill in values for each day
+
+
 NJ_A_ensemble_data_daily <- make_daily_data(data = NJ_A_ensemble_data_daily, current_timescale = "week") 
 NJ_A_ensemble_data_daily <- NJ_A_ensemble_data_daily %>% filter(!(date %in% NJ_A_ensemble_data_daily_1$date)) %>%
     rename(location = subpop)
 
+
+NJ_covid_ensemble_data_daily <- make_daily_data(data = NJ_covid_ensemble_data_daily, current_timescale = "week") 
+NJ_covid_ensemble_data_daily <- NJ_covid_ensemble_data_daily %>% filter(!(date %in% NJ_covid_ensemble_data_daily_1$date)) %>%
+  rename(location = subpop)
+
+NJ_flu_ensemble_data_daily <- make_daily_data(data = NJ_flu_ensemble_data_daily, current_timescale = "week") 
+NJ_flu_ensemble_data_daily <- NJ_flu_ensemble_data_daily %>% filter(!(date %in% NJ_flu_ensemble_data_daily_1$date)) %>%
+  rename(location = subpop)
 # gt_formatted_counts <- gt_formatted_counts %>% 
 #   dplyr::group_by(subpop, age_group) %>%
 #   tidyr::complete(date = seq.Date(min(date), max(date), by="day")) %>%  # fill in missing days
@@ -268,7 +401,21 @@ NJ_A_ensemble_data_daily %>%
   # facet_wrap(~subpop, scales = 'free_y') +
   ylab('daily hosp counts')+
   theme_bw() 
-NJ_A_ensemble_data %>% 
+
+NJ_A_covid_ensemble_data %>% 
+  ggplot() + 
+  geom_line(aes(date, incidH, colour = location)) +
+  # facet_wrap(~subpop, scales = 'free_y') +
+  ylab('daily hosp counts')+
+  theme_bw() 
+
+NJ_flu_ensemble_data_daily %>% 
+  ggplot() + 
+  geom_line(aes(date, incidH, colour = location)) +
+  # facet_wrap(~subpop, scales = 'free_y') +
+  ylab('daily hosp counts')+
+  theme_bw() 
+NJ_flu_ensemble_data %>% 
   ggplot() + 
   geom_line(aes(date, incidH, colour = location)) +
   # facet_wrap(~subpop, scales = 'free_y') +
@@ -276,25 +423,40 @@ NJ_A_ensemble_data %>%
   theme_bw() 
 
 
-
-
-
 # Calculate burden --------------------------------------------------------
 
+## covid
 nj_data_burden <- create_hosp_dates(data = covid_data) 
 NJ_A_ensemble_data_burden <- create_hosp_dates(data = NJ_A_ensemble_data_daily %>% dplyr::select(-cumH))
 
 nj_data_burden_covid <- create_curr_hosp(data_burden = nj_data_burden)
 NJ_A_ensemble_data_burden_covid <- create_curr_hosp(data_burden = NJ_A_ensemble_data_burden)
 
-# visualization
+## flu 
 
+nj_flu_data_burden_1 <- create_hosp_dates_flu(data = flu_data) 
+NJ_flu_ensemble_data_burden <- create_hosp_dates_flu(data = NJ_flu_ensemble_data_daily %>% dplyr::select(-cumH))
+
+nj_flu_data_burden <- create_curr_hosp(data_burden = nj_flu_data_burden_1)
+NJ_flu_ensemble_data_burden <- create_curr_hosp(data_burden = NJ_flu_ensemble_data_burden)
+
+# visualization
+## covid
 nj_data_burden_covid %>%
   ggplot(aes(x = hosp_dates, y = curr_hosp)) +
   geom_line()
 
 #note: graph x-axis is shorter if use horizon instead of date
 NJ_A_ensemble_data_burden_covid %>%
+  ggplot(aes(x = hosp_dates, y = curr_hosp)) +
+  geom_line()
+
+## flu 
+nj_flu_data_burden %>%
+  ggplot(aes(x = hosp_dates, y = curr_hosp)) +
+  geom_line()
+
+NJ_flu_ensemble_data_burden %>%
   ggplot(aes(x = hosp_dates, y = curr_hosp)) +
   geom_line()
 
@@ -320,37 +482,12 @@ NJ_A_ensemble_data_burden_covid %>%
 #   ggplot(aes(x = hosp_dates, y = curr_hosp)) +
 #   geom_line()
 
-# ~ Influenza --------------------------------------------------------------
-
-flu_data <- nj_data %>%
-    filter(pathogen == "Influenza") %>%
-    filter(!is.na(incidH) & incidH>0)
-
-nj_data_burden <- list()
-for (i in 1:nrow(flu_data)){
-    
-    nj_data_burden[[i]] <- flu_data[i, ] %>%
-        rename(admit_date = date) %>%
-        expand_grid(hosp_dates = 
-            burden_est_funct(incidH = flu_data$incidH[i], 
-                             date = flu_data$date[i], 
-                             hospstayfunct = fluhosp_stay_funct)
-        )
-}
-nj_data_burden_flu <- nj_data_burden %>%
-    bind_rows() %>%
-    select(-admit_date, -incidH) %>%
-    group_by(source, FIPS, pathogen, hosp_dates) %>%
-    summarise(curr_hosp = length(hosp_dates)) %>%
-    ungroup()
-
-
 
 # MERGE INCIDENT AND BURDEN -----------------------------------------------
 
 # combine flu and covid
 
-nj_data_burden <- nj_data_burden_flu %>% 
+nj_data_burden <- nj_flu_data_burden %>% 
     bind_rows(nj_data_burden_covid)
 
 # add incident data
@@ -369,7 +506,8 @@ nj_data_burden <- nj_data_burden %>%
             ungroup() %>%
             mutate(pathogen = "Combined"))
 
-
+#create combined for ensemble data
+#note: will need to add pathogen column for covid vs flu 
 
 # PLOT DATA ---------------------------------------------------------------
 
@@ -391,7 +529,12 @@ cowplot::plot_grid(
       geom_line() +
       theme(legend.position = c(.8,.8)) +
       ggtitle("Ensemble Daily COVID Hospital Burden"),
-    nrow = 3)
+    NJ_flu_ensemble_data_burden %>%
+      ggplot(aes(x = hosp_dates, y = curr_hosp)) +
+      geom_line() +
+      theme(legend.position = c(.8,.8)) +
+      ggtitle("Ensemble Daily Flu Hospital Burden"),
+    nrow = 4)
 
 
 
