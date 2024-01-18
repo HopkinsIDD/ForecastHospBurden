@@ -50,7 +50,8 @@ make_daily_data <- function(data = gt_formatted_counts,
     map_dfr(~get_spline_daily(grp_dat = .)) %>%
     mutate(value = ifelse(value < 0, 0, value)) %>%
     pivot_wider(names_from = outcome, values_from = value) %>%
-    dplyr::select(date, subpop, starts_with("incid"), starts_with("cum"))
+    dplyr::select(date, subpop, everything(), starts_with("incid"), starts_with("cum"), -date_num) %>%
+    ungroup()
 }
 
 
@@ -163,7 +164,7 @@ NJ_A_covid_ensemble_data <- select_parameters(state = "34", scenario = "A-2023-0
 select_parameters_2 <- function(state, data){
   parameters_ensemble_data <- data %>%
     filter(location == state,
-           type_id == 0.950 | type_id == 0.500) %>%
+           type_id %in% c(0.500, 0.025, 0.975)) %>%
     # convert horizon to date for burden_est function
     mutate(date = as_date(origin_date + horizon*7)) %>% 
     group_by_all() %>%
@@ -330,62 +331,50 @@ create_curr_hosp <- function(data_burden){
 
 # Make data daily 
 
-# add a week of zeros before if none exists so interpolation spline works properly
-
 ## covid
-NJ_A_ensemble_data_daily_1 <- NJ_A_covid_ensemble_data %>% 
-  group_by(location, type, scenario_id, target, origin_date) %>% 
-  mutate(first_date = min(date)) %>%
-  filter(date == first_date & incidH != 0) %>%
-  mutate(date2 = date - 7, incidH0 = 0) %>%
-  ungroup() %>%
-  select(date = date2, location, type, scenario_id, target, origin_date, incidH = incidH0)
-
-
-NJ_A_ensemble_data_daily <- NJ_A_ensemble_data_daily_1 %>% rbind(NJ_A_covid_ensemble_data) %>%
-    rename(subpop = location)
 
 ## add week 0 function for covid & flu 
 create_week_0 <- function(data){
+    
   data_daily_1 <- data %>% 
-    group_by(location, type, target, origin_date) %>% 
-    mutate(first_date = min(date)) %>%
-    filter(date == first_date & incidH != 0) %>%
-    mutate(date = date - 7, incidH = 0) %>% 
-    select(-first_date)
+      group_by(across(-c(contains("date"), contains("horizon"), starts_with("incid")))) %>%
+      mutate(first_date = min(date)) %>% 
+      ungroup() %>%
+      filter(date == first_date & incidH != 0) %>%
+      mutate(date = date - 7, incidH = 0) %>% 
+      select(-first_date) 
   
   return(data_daily_1)
 }
 
-NJ_flu_ensemble_data_daily_1 <- create_week_0(data = NJ_flu_ensemble_data)
-NJ_covid_ensemble_data_daily_1 <- create_week_0(data = NJ_covid_ensemble_data)
-
-add_week_0_data <- function(data_daily_1, data){
-  
+dadd_week_0_data <- function(data_daily_1, data){
   data_daily <- data_daily_1 %>% rbind(data) %>% 
     rename(subpop = location)
-  
   return(data_daily)
 }
 
-NJ_flu_ensemble_data_daily <- add_week_0_data(data_daily_1 = NJ_flu_ensemble_data_daily_1, data = NJ_flu_ensemble_data)
-NJ_covid_ensemble_data_daily <- add_week_0_data(data_daily_1 = NJ_covid_ensemble_data_daily_1, data = NJ_covid_ensemble_data)
+NJ_flu_ensemble_data_daily_1 <- create_week_0(data = NJ_flu_ensemble_data) %>% mutate(target_end_date = date)
+NJ_covid_ensemble_data_daily_1 <- create_week_0(data = NJ_covid_ensemble_data) %>% mutate(target_end_date = date)
+
+NJ_flu_ensemble_data_daily <- add_week_0_data(data_daily_1 = NJ_flu_ensemble_data_daily_1, data = NJ_flu_ensemble_data %>% mutate(target_end_date = date))
+NJ_covid_ensemble_data_daily <- add_week_0_data(data_daily_1 = NJ_covid_ensemble_data_daily_1, data = NJ_covid_ensemble_data %>% mutate(target_end_date = date))
+
+
 
 ## fill in values for each day
 
+# NJ_A_ensemble_data_daily <- make_daily_data(data = NJ_A_ensemble_data_daily, current_timescale = "week") 
+# NJ_A_ensemble_data_daily <- NJ_A_ensemble_data_daily %>% filter(!(date %in% NJ_A_ensemble_data_daily_1$date)) %>%
+#     rename(location = subpop)
 
-NJ_A_ensemble_data_daily <- make_daily_data(data = NJ_A_ensemble_data_daily, current_timescale = "week") 
-NJ_A_ensemble_data_daily <- NJ_A_ensemble_data_daily %>% filter(!(date %in% NJ_A_ensemble_data_daily_1$date)) %>%
-    rename(location = subpop)
-
-
-NJ_covid_ensemble_data_daily <- make_daily_data(data = NJ_covid_ensemble_data_daily, current_timescale = "week") 
+NJ_covid_ensemble_data_daily <- make_daily_data(data = NJ_covid_ensemble_data_daily %>% dplyr::select(-starts_with("target_end_date"), -starts_with("horizon")), current_timescale = "week") 
 NJ_covid_ensemble_data_daily <- NJ_covid_ensemble_data_daily %>% filter(!(date %in% NJ_covid_ensemble_data_daily_1$date)) %>%
   rename(location = subpop)
 
-NJ_flu_ensemble_data_daily <- make_daily_data(data = NJ_flu_ensemble_data_daily, current_timescale = "week") 
+NJ_flu_ensemble_data_daily <- make_daily_data(data = NJ_flu_ensemble_data_daily %>% dplyr::select(-starts_with("target_end_date"), -starts_with("horizon")), current_timescale = "week") 
 NJ_flu_ensemble_data_daily <- NJ_flu_ensemble_data_daily %>% filter(!(date %in% NJ_flu_ensemble_data_daily_1$date)) %>%
   rename(location = subpop)
+
 # gt_formatted_counts <- gt_formatted_counts %>% 
 #   dplyr::group_by(subpop, age_group) %>%
 #   tidyr::complete(date = seq.Date(min(date), max(date), by="day")) %>%  # fill in missing days
@@ -395,29 +384,48 @@ NJ_flu_ensemble_data_daily <- NJ_flu_ensemble_data_daily %>% filter(!(date %in% 
 #write.csv(gt_formatted, "data/rsvnet_sample_data.csv", row.names = FALSE)
 
 # Check hospitalization counts timeseries
-NJ_A_ensemble_data_daily %>% 
+
+ggplot() + 
+    geom_line(data = 
+                  NJ_covid_ensemble_data %>% 
+                  mutate(type_id = as.character(type_id)),
+              aes(date, incidH, colour = type_id, linetype = "weekly")) +
+        geom_line(data = 
+                  NJ_covid_ensemble_data_daily %>% 
+                  mutate(type_id = as.character(type_id)),
+                  aes(date, incidH, colour = type_id, linetype = "daily"),) +
+    facet_wrap(~scenario_id, scales = 'free_y') +
+    ylab('daily hosp counts')+
+    theme_bw() 
+
+NJ_covid_ensemble_data_daily %>% 
+  mutate(type_id = as.character(type_id)) %>%
   ggplot() + 
-  geom_line(aes(date, incidH, colour = location)) +
-  # facet_wrap(~subpop, scales = 'free_y') +
+  geom_line(aes(date, incidH, colour = type_id)) +
+  facet_wrap(~scenario_id, scales = 'free_y') +
   ylab('daily hosp counts')+
   theme_bw() 
 
-NJ_A_covid_ensemble_data %>% 
+NJ_covid_ensemble_data %>% 
+  mutate(type_id = as.character(type_id)) %>%
   ggplot() + 
-  geom_line(aes(date, incidH, colour = location)) +
-  # facet_wrap(~subpop, scales = 'free_y') +
+  geom_line(aes(date, incidH, colour = type_id)) +
+  facet_wrap(~scenario_id, scales = 'free_y') +
   ylab('daily hosp counts')+
   theme_bw() 
 
 NJ_flu_ensemble_data_daily %>% 
+  mutate(type_id = as.character(type_id)) %>%
   ggplot() + 
-  geom_line(aes(date, incidH, colour = location)) +
+  geom_line(aes(date, incidH, colour = type_id)) +
   # facet_wrap(~subpop, scales = 'free_y') +
   ylab('daily hosp counts')+
   theme_bw() 
+
 NJ_flu_ensemble_data %>% 
+  mutate(type_id = as.character(type_id)) %>%
   ggplot() + 
-  geom_line(aes(date, incidH, colour = location)) +
+  geom_line(aes(date, incidH, colour = type_id)) +
   # facet_wrap(~subpop, scales = 'free_y') +
   ylab('daily hosp counts')+
   theme_bw() 
