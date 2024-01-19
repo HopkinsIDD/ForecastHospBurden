@@ -347,7 +347,7 @@ create_week_0 <- function(data){
   return(data_daily_1)
 }
 
-dadd_week_0_data <- function(data_daily_1, data){
+add_week_0_data <- function(data_daily_1, data){
   data_daily <- data_daily_1 %>% rbind(data) %>% 
     rename(subpop = location)
   return(data_daily)
@@ -434,23 +434,25 @@ NJ_flu_ensemble_data %>%
 # Calculate burden --------------------------------------------------------
 
 ## covid
-nj_data_burden <- create_hosp_dates(data = covid_data) 
-NJ_A_ensemble_data_burden <- create_hosp_dates(data = NJ_A_ensemble_data_daily %>% dplyr::select(-cumH))
+nj_covid_data_burden_1 <- create_hosp_dates(data = covid_data) 
+#NJ_A_ensemble_data_burden <- create_hosp_dates(data = NJ_A_ensemble_data_daily %>% dplyr::select(-cumH))
+NJ_covid_ensemble_data_burden_1 <- create_hosp_dates(data = NJ_covid_ensemble_data_daily %>% dplyr::select(-cumH))
 
-nj_data_burden_covid <- create_curr_hosp(data_burden = nj_data_burden)
-NJ_A_ensemble_data_burden_covid <- create_curr_hosp(data_burden = NJ_A_ensemble_data_burden)
+nj_covid_data_burden <- create_curr_hosp(data_burden = nj_covid_data_burden_1)
+#NJ_A_ensemble_data_burden_covid <- create_curr_hosp(data_burden = NJ_A_ensemble_data_burden)
+NJ_covid_ensemble_data_burden <- create_curr_hosp(data_burden = NJ_covid_ensemble_data_burden_1)
 
 ## flu 
 
 nj_flu_data_burden_1 <- create_hosp_dates_flu(data = flu_data) 
-NJ_flu_ensemble_data_burden <- create_hosp_dates_flu(data = NJ_flu_ensemble_data_daily %>% dplyr::select(-cumH))
+NJ_flu_ensemble_data_burden_1 <- create_hosp_dates_flu(data = NJ_flu_ensemble_data_daily %>% dplyr::select(-cumH))
 
 nj_flu_data_burden <- create_curr_hosp(data_burden = nj_flu_data_burden_1)
-NJ_flu_ensemble_data_burden <- create_curr_hosp(data_burden = NJ_flu_ensemble_data_burden)
+NJ_flu_ensemble_data_burden <- create_curr_hosp(data_burden = NJ_flu_ensemble_data_burden_1)
 
 # visualization
 ## covid
-nj_data_burden_covid %>%
+nj_covid_data_burden %>%
   ggplot(aes(x = hosp_dates, y = curr_hosp)) +
   geom_line()
 
