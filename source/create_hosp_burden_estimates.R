@@ -10,6 +10,7 @@ library(tidyverse)
 library(readr)
 library(lubridate)
 library(flepicommon)
+library(gghighlight)
 
 
 # source data functions
@@ -456,10 +457,11 @@ nj_covid_data_burden %>%
   ggplot(aes(x = hosp_dates, y = curr_hosp)) +
   geom_line()
 
-#note: graph x-axis is shorter if use horizon instead of date
-NJ_A_ensemble_data_burden_covid %>%
-  ggplot(aes(x = hosp_dates, y = curr_hosp)) +
-  geom_line()
+NJ_covid_ensemble_data_burden %>%
+  mutate(type_id = as.character(type_id)) %>% 
+  ggplot(aes(x = hosp_dates, y = curr_hosp, colour = type_id)) +
+  geom_line() + 
+  facet_wrap(~scenario_id, scales = 'free_y')
 
 ## flu 
 nj_flu_data_burden %>%
@@ -498,7 +500,26 @@ NJ_flu_ensemble_data_burden %>%
 # combine flu and covid
 
 nj_data_burden <- nj_flu_data_burden %>% 
-    bind_rows(nj_data_burden_covid)
+    bind_rows(nj_covid_data_burden)
+
+# combine covid 
+
+nj_covid_data_burden <- nj_covid_data_burden %>% 
+  mutate(type_id = "empirical",
+         scenario_id = "empirical") 
+
+nj_covid_merge <- NJ_covid_ensemble_data_burden %>% 
+  mutate(type_id = as.character(type_id),
+         scenario_id = as.character(scenario_id)) %>% 
+  bind_rows(nj_covid_data_burden)
+
+# combine flu
+nj_flu_data_burden <- nj_flu_data_burden %>% 
+  mutate(type_id = "empirical") 
+
+nj_flu_merge <- NJ_flu_ensemble_data_burden %>% 
+  mutate(type_id = as.character(type_id)) %>% 
+  bind_rows(nj_flu_data_burden)
 
 # add incident data
 nj_data_burden <- nj_data_burden %>%
@@ -516,7 +537,6 @@ nj_data_burden <- nj_data_burden %>%
             ungroup() %>%
             mutate(pathogen = "Combined"))
 
-#create combined for ensemble data
 #note: will need to add pathogen column for covid vs flu 
 
 # PLOT DATA ---------------------------------------------------------------
@@ -534,19 +554,55 @@ cowplot::plot_grid(
         theme_bw() +
         theme(legend.position = c(.9,.5)) +
         ggtitle("Empirical Daily Hospital Burden"),
-    NJ_A_ensemble_data_burden_covid %>%
-      ggplot(aes(x = hosp_dates, y = curr_hosp)) +
+    NJ_covid_ensemble_data_burden %>%
+      mutate(type_id = as.character(type_id)) %>% 
+      ggplot(aes(x = hosp_dates, y = curr_hosp, color = type_id)) +
       geom_line() +
       theme(legend.position = c(.8,.8)) +
       ggtitle("Ensemble Daily COVID Hospital Burden"),
     NJ_flu_ensemble_data_burden %>%
-      ggplot(aes(x = hosp_dates, y = curr_hosp)) +
+      ggplot(aes(x = hosp_dates, y = curr_hosp, color = type_id)) +
       geom_line() +
       theme(legend.position = c(.8,.8)) +
       ggtitle("Ensemble Daily Flu Hospital Burden"),
     nrow = 4)
 
+nj_covid_merge %>% 
+  mutate(hosp_dates = as.Date(hosp_dates)) %>% 
+  filter(between(hosp_dates, as.Date('2023-04-16'), as.Date(Sys.Date()))) %>% 
+  ggplot(aes(x = hosp_dates, y = curr_hosp)) +
+  geom_line(aes(color = type_id, linetype = scenario_id)) +
+  ggtitle("Empirical and Ensemble Covid Hospital Burden")
 
+nj_covid_merge %>% 
+  mutate(type_id = as.character(type_id),
+         hosp_dates = as.Date(hosp_dates)) %>% 
+  filter(between(hosp_dates, as.Date('2023-04-16'), as.Date(Sys.Date()))) %>% 
+  ggplot(aes(x = hosp_dates, y = curr_hosp)) +
+  geom_line(aes(color = type_id, linetype = scenario_id)) + 
+  gghighlight(type_id == "empirical" & scenario_id == "empirical",
+              unhighlighted_params = list(linewidth = 0.3,
+                                          colour = alpha("darkblue", 0.7),
+                                          linetype = "dotted"),
+              use_direct_label = FALSE) +
+  ggtitle("Empirical and Ensemble Covid Hospital Burden")
 
+nj_flu_merge %>% 
+  mutate(hosp_dates = as.Date(hosp_dates)) %>% 
+  filter(between(hosp_dates, as.Date('2023-12-24'), as.Date(Sys.Date()))) %>% 
+  ggplot(aes(x = hosp_dates, y = curr_hosp)) +
+  geom_line(aes(color = type_id)) +
+  ggtitle("Empirical and Ensemble Flu Hospital Burden")
 
+nj_flu_merge %>% 
+  mutate(hosp_dates = as.Date(hosp_dates)) %>% 
+  filter(between(hosp_dates, as.Date('2023-12-24'), as.Date(Sys.Date()))) %>% 
+  ggplot(aes(x = hosp_dates, y = curr_hosp)) +
+  geom_line(aes(color = type_id)) + 
+  gghighlight(type_id == "empirical",
+              unhighlighted_params = list(linewidth = 0.3,
+                                          colour = alpha("darkblue", 0.7),
+                                          linetype = "dotted"),
+              use_direct_label = FALSE) +
+  ggtitle("Empirical and Ensemble Flu Hospital Burden")
 
