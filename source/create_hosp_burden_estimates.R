@@ -606,3 +606,10 @@ nj_flu_merge %>%
               use_direct_label = FALSE) +
   ggtitle("Empirical and Ensemble Flu Hospital Burden")
 
+max_covid_values <- nj_covid_merge %>% 
+  group_by(scenario_id, type_id) %>% 
+  summarize(max(curr_hosp))
+
+max_flu_values <- nj_flu_merge %>% 
+  group_by(type_id) %>% 
+  summarize(max(curr_hosp))
