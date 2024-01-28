@@ -144,10 +144,12 @@ burden_est_funct <- function(incidH, date, hospstayfunct = covidhosp_stay_funct)
 
 # function requires code for state and scenario id from covid19-scenario-modeling-hub Ensemble_LOP file 2023-04-16
 # returns data frame for specific state (ie: NJ) and scenario (ie: A-2023-04-16) with projection date and median incidence hospitalizations
+# shorten horizon so projection goes one month out 
 select_parameters <- function(state, scenario){
   parameters_covid_ensemble_data <- covid_ensemble_data %>%
     filter(location == state,
-           scenario_id == scenario) %>%
+           scenario_id == scenario,
+           horizon <= 4) %>%
     # convert horizon to date for burden_est function
     mutate(date = as_date(origin_date + horizon*7)) %>% 
     group_by(date, scenario_id, target, origin_date, location, type) %>%
@@ -165,7 +167,8 @@ NJ_A_covid_ensemble_data <- select_parameters(state = "34", scenario = "A-2023-0
 select_parameters_2 <- function(state, data){
   parameters_ensemble_data <- data %>%
     filter(location == state,
-           type_id %in% c(0.500, 0.025, 0.975)) %>%
+           type_id %in% c(0.500, 0.025, 0.975),
+           horizon <= 4) %>%
     # convert horizon to date for burden_est function
     mutate(date = as_date(origin_date + horizon*7)) %>% 
     group_by_all() %>%
@@ -472,6 +475,8 @@ NJ_flu_ensemble_data_burden %>%
   ggplot(aes(x = hosp_dates, y = curr_hosp)) +
   geom_line()
 
+
+
 # nj_data_burden <- list()
 # for (i in 1:nrow(covid_data)){
 # 
@@ -503,8 +508,9 @@ nj_data_burden <- nj_flu_data_burden %>%
     bind_rows(nj_covid_data_burden)
 
 # combine covid 
-
+# add dates truncated to one month before covid projection
 nj_covid_data_burden <- nj_covid_data_burden %>% 
+  #filter(between(hosp_dates, as.Date('2023-03-01'), as.Date('2023-04-16'))) %>% 
   mutate(type_id = "empirical",
          scenario_id = "empirical") 
 
@@ -613,3 +619,21 @@ max_covid_values <- nj_covid_merge %>%
 max_flu_values <- nj_flu_merge %>% 
   group_by(type_id) %>% 
   summarize(max(curr_hosp))
+
+## creating new viz with truncated dates
+
+nj_covid_merge %>% 
+  mutate(hosp_dates = as.Date(hosp_dates)) %>% 
+  filter(between(hosp_dates, as.Date('2023-03-01'), as.Date('2023-05-16'))) %>% 
+  ggplot(aes(x = hosp_dates, y = curr_hosp)) +
+  geom_line(aes(color = type_id, linetype = scenario_id)) +
+  ggtitle("Empirical and Ensemble Covid Hospital Burden")
+
+nj_flu_merge %>% 
+  mutate(hosp_dates = as.Date(hosp_dates)) %>% 
+  filter(between(hosp_dates, as.Date('2023-11-01'), as.Date('2024-01-27'))) %>% 
+  ggplot(aes(x = hosp_dates, y = curr_hosp)) +
+  geom_line(aes(color = type_id)) +
+  ggtitle("Empirical and Ensemble Flu Hospital Burden")
+
+
