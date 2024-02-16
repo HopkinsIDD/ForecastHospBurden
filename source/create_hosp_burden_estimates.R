@@ -13,6 +13,7 @@ library(flepicommon)
 library(gghighlight)
 
 
+
 # source data functions
 source("source/data_setup_source.R")
 
@@ -22,6 +23,8 @@ opt$delphi_api_key <- "04e7369e1541a"
 opt$gt_data_path <- "data/nj_covid_hosp.parquet"
 opt$gt_covid_ensemble_data_path <- "data/ensemble_lop/2023-04-16-Ensemble_LOP-Inc_Hosp.parquet"
 opt$gt_flu_ensemble_data_path <- "data/2024-01-06-FluSight-ensemble.parquet"
+opt$gt_NJ_total_hosp_data_path <- "data/NJ_total_hosp.parquet"
+
 
 source("source/pull_empirical_data.R")
 
@@ -244,7 +247,6 @@ flu_data <- nj_data %>%
 
 # ~ Influenza Ensemble Data --------------------------------------------------
 
-#forecast goes 3 weeks out, do we want to use this dataset? 
 select_flu_parameters <- function(state){
   parameters_flu_ensemble_data <- flu_ensemble_data %>%
     filter(location == state) %>%
@@ -454,6 +456,18 @@ NJ_flu_ensemble_data_burden_1 <- create_hosp_dates_flu(data = NJ_flu_ensemble_da
 nj_flu_data_burden <- create_curr_hosp(data_burden = nj_flu_data_burden_1)
 NJ_flu_ensemble_data_burden <- create_curr_hosp(data_burden = NJ_flu_ensemble_data_burden_1)
 
+# Calculate weekly burden --------------------------------------------------------
+
+NJ_covid_ensemble_weekly_data_burden_1 <- create_hosp_dates(data = NJ_covid_ensemble_data)
+NJ_covid_ensemble_weekly_data_burden <- create_curr_hosp(data_burden = NJ_covid_ensemble_weekly_data_burden_1)
+
+NJ_covid_empirical_weekly_data_burden_1 <- create_hosp_dates(data = covid_data)
+NJ_covid_empirical_weekly_data_burden <- create_curr_hosp(data_burden = NJ_covid_empirical_weekly_data_burden_1)
+
+write_parquet(NJ_covid_ensemble_weekly_data_burden,  "data/hosp_burden/NJ_covid_ensemble_weekly_data_burden.parquet")
+write_parquet(NJ_covid_empirical_weekly_data_burden,  "data/hosp_burden/NJ_covid_empirical_weekly_data_burden.parquet")
+
+
 # visualization
 ## covid
 nj_covid_data_burden %>%
@@ -521,6 +535,7 @@ nj_covid_merge <- NJ_covid_ensemble_data_burden %>%
 
 # combine flu
 nj_flu_data_burden <- nj_flu_data_burden %>% 
+  filter(between(hosp_dates, as.Date('2023-12-06'), as.Date('2024-01-06'))) %>% 
   mutate(type_id = "empirical") 
 
 nj_flu_merge <- NJ_flu_ensemble_data_burden %>% 
@@ -624,7 +639,7 @@ max_flu_values <- nj_flu_merge %>%
 
 nj_covid_merge %>% 
   mutate(hosp_dates = as.Date(hosp_dates)) %>% 
-  filter(between(hosp_dates, as.Date('2023-03-01'), as.Date('2023-05-16'))) %>% 
+  filter(between(hosp_dates, as.Date('2023-04-01'), as.Date('2023-05-16'))) %>% 
   ggplot(aes(x = hosp_dates, y = curr_hosp)) +
   geom_line(aes(color = type_id, linetype = scenario_id)) +
   ggtitle("Empirical and Ensemble Covid Hospital Burden")
@@ -635,5 +650,20 @@ nj_flu_merge %>%
   ggplot(aes(x = hosp_dates, y = curr_hosp)) +
   geom_line(aes(color = type_id)) +
   ggtitle("Empirical and Ensemble Flu Hospital Burden")
+
+ggplot(df, aes(x = x)) +
+  geom_line(aes(y = y1), color = "blue") +
+  geom_line(aes(y = y2), color = "red") +
+  geom_ribbon(aes(ymin = y1, ymax = y2), fill = "gray", alpha = 0.3) +
+  labs(x = "X", y = "Y") +
+  theme_minimal()
+
+# filter to 97.5% CI 
+
+upper_covid_burden <- NJ_covid_ensemble_data_burden %>% 
+  filter(type_id ==0.975 & scenario_id == "B-2023-04-16")
+# filter to 2.5% CI 
+lower_covid_burden <- NJ_covid_ensemble_data_burden %>% 
+  filter(type_id ==0.025 & scenario_id == "B-2023-04-16")
 
 
