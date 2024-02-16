@@ -43,17 +43,23 @@ empirical_IH_NJ_total_hosp <- empirical_IH_NJ_total_hosp %>%
 #   summarize(sum_value = sum(total_hosp))  
   
 NJ_total_hosp_weekly <- NJ_total_hosp %>% 
-  group_by(week = format(date - as.numeric(format(date, "%w")) + 1, "%Y-%m-%d")) %>%  # Group by week using format()
-  summarize(sum_value = sum(total_hosp))  
+  group_by(state, week = format(date - as.numeric(format(date, "%w")) + 1, "%Y-%m-%d")) %>%  # Group by week using format()
+  summarize(total_hosp = sum(total_hosp))  
 
 ensemble_IH_NJ_total_hosp_weekly <- ensemble_IH_NJ_total_hosp %>% 
   group_by(scenario_id, type_id, week = format(hosp_dates - as.numeric(format(hosp_dates, "%w")) + 1, "%Y-%m-%d")) %>%
-  summarize(sum_value = sum(curr_hosp))     # Calculate total sum for each week
+  summarize(total_hosp_forecast = sum(curr_hosp))     # Calculate total sum for each week
 
 
 # CREATE DATASETS ---------------------------------------------------------------
 empirical_forecast <- inner_join(NJ_total_hosp, empirical_IH_NJ_total_hosp, by = "date") %>% 
   select(state, date, pathogen, total_hosp, total_hosp_forecast)
 
-ensemble_forecast <-  inner_join(NJ_total_hosp_weekly, ensemble_IH_NJ_total_hosp_weekly, by = "week")
+ensemble_forecast <-  inner_join(NJ_total_hosp_weekly, ensemble_IH_NJ_total_hosp_weekly, by = "week") %>% 
+  mutate(pathogen = 'COVID-19') %>% 
+  select(state, week, pathogen, type_id, total_hosp, total_hosp_forecast)
 
+# CREATE COMPARE VARIABLE DATASETS ---------------------------------------------------------------
+
+empirical_forecast <- empirical_forecast %>% 
+  mutate(dif = total_hosp_forecast - total_hosp)
