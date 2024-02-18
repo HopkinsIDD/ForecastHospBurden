@@ -57,9 +57,14 @@ empirical_forecast <- inner_join(NJ_total_hosp, empirical_IH_NJ_total_hosp, by =
 
 ensemble_forecast <-  inner_join(NJ_total_hosp_weekly, ensemble_IH_NJ_total_hosp_weekly, by = "week") %>% 
   mutate(pathogen = 'COVID-19') %>% 
-  select(state, week, pathogen, type_id, total_hosp, total_hosp_forecast)
+  select(state, week, pathogen, scenario_id, type_id, total_hosp, total_hosp_forecast)
 
-# CREATE COMPARE VARIABLE DATASETS ---------------------------------------------------------------
+# CREATE OUTCOME VARIABLE DATASETS ---------------------------------------------------------------
 
 empirical_forecast <- empirical_forecast %>% 
   mutate(dif = total_hosp_forecast - total_hosp)
+
+test <- ensemble_forecast %>% 
+  pivot_wider(names_from = type_id, 
+              values_from = total_hosp_forecast) %>% 
+  mutate(interval_95 = if_else(total_hosp >= `0.5` & total_hosp <= `0.975`, 1, 0))
