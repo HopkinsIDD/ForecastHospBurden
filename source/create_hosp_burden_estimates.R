@@ -129,15 +129,32 @@ flu_ensemble_data <- flu_ensemble_data %>%
 
 # create functions for sampling hospitalization duration 
 #  -- currently these are not based on any lit or data -- need to update
-covidhosp_stay_funct <- function(n) {
-    rpois(n = n, lambda = 6)
+covidhosp_stay_funct <- function(n, x_values) {
+  
+  stay_durations_list <- list()
+  # Loop through each value of x
+  for (x in x_values) {
+    # Generate hospitalization stay durations for the current value of x
+    stay_durations <- rpois(n = n, lambda = x)
+    
+    # Append the result to the list
+    stay_durations_list[[as.character(x)]] <- stay_durations
+  }
+  
+  # Return the list of results
+  return(stay_durations_list)
 }
+
+
+covidhosp_stay_funct(100, x_values = c(6,10, 20, 30))
+
 fluhosp_stay_funct <- function(n) {
     rpois(n = n, lambda = 10)
 }
 
+
 burden_est_funct <- function(incidH, date, hospstayfunct = covidhosp_stay_funct){
-    lubridate::as_date(sort(unlist(sapply(X = hospstayfunct(n = incidH), function(x = X) (0:(x-1)) + date))))
+    lubridate::as_date(sort(unlist(sapply(X = hospstayfunct(n = incidH, x = c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)), function(x = X) (0:(x-1)) + date))))
 }
 
 
