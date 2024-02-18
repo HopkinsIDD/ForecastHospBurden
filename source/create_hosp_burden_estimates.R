@@ -9,7 +9,7 @@ library(tidycensus)
 library(tidyverse)
 library(readr)
 library(lubridate)
-library(flepicommon)
+#library(flepicommon)
 library(gghighlight)
 
 
@@ -26,7 +26,7 @@ opt$gt_flu_ensemble_data_path <- "data/2024-01-06-FluSight-ensemble.parquet"
 opt$gt_NJ_total_hosp_data_path <- "data/NJ_total_hosp.parquet"
 
 
-source("source/pull_empirical_data.R")
+#source("source/pull_empirical_data.R")
 
 
 
@@ -170,7 +170,7 @@ NJ_A_covid_ensemble_data <- select_parameters(state = "34", scenario = "A-2023-0
 select_parameters_2 <- function(state, data){
   parameters_ensemble_data <- data %>%
     filter(location == state,
-           type_id %in% c(0.500, 0.025, 0.975),
+           #type_id %in% c(0.500, 0.025, 0.975),
            horizon <= 4) %>%
     # convert horizon to date for burden_est function
     mutate(date = as_date(origin_date + horizon*7)) %>% 
