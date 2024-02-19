@@ -14,6 +14,7 @@ library(gghighlight)
 
 
 
+
 # source data functions
 source("source/data_setup_source.R")
 
@@ -128,35 +129,43 @@ flu_ensemble_data <- flu_ensemble_data %>%
 # BUILD SIMPLE EXAMPLE BURDEN ESTIMATOR -----------------------------------
 
 # create functions for sampling hospitalization duration 
-#  -- currently these are not based on any lit or data -- need to update
-covidhosp_stay_funct <- function(n, x_values) {
-  
-  stay_durations_list <- list()
-  # Loop through each value of x
-  for (x in x_values) {
-    # Generate hospitalization stay durations for the current value of x
-    stay_durations <- rpois(n = n, lambda = x)
-    
-    # Append the result to the list
-    stay_durations_list[[as.character(x)]] <- stay_durations
-  }
-  
-  # Return the list of results
-  return(stay_durations_list)
+covidhosp_stay_funct <- function(n, lambda) {
+  rpois(n = n, lambda = lambda)
 }
-
-
-covidhosp_stay_funct(100, x_values = c(6,10, 20, 30))
+  
+#  -- currently these are not based on any lit or data -- need to update
+# covidhosp_stay_funct <- function(n, x_values) {
+#   
+#   stay_durations_list <- list()
+#   # Loop through each value of x
+#   for (x in x_values) {
+#     # Generate hospitalization stay durations for the current value of x
+#     stay_durations <- rpois(n = n, lambda = x)
+#     
+#     # Append the result to the list
+#     stay_durations_list[[as.character(x)]] <- stay_durations
+#   }
+#   
+#   # Return the list of results
+#   return(stay_durations_list)
+# }
+#covidhosp_stay_funct(100, x_values = c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10))
 
 fluhosp_stay_funct <- function(n) {
-    rpois(n = n, lambda = 10)
+    rpois(n = n, lambda = lambda)
 }
-
 
 burden_est_funct <- function(incidH, date, hospstayfunct = covidhosp_stay_funct){
-    lubridate::as_date(sort(unlist(sapply(X = hospstayfunct(n = incidH, x = c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)), function(x = X) (0:(x-1)) + date))))
+  lubridate::as_date(sort(unlist(sapply(X = hospstayfunct(n = incidH, lambda = lambda), function(x = X) (0:(x-1)) + date))))
 }
 
+
+# burden_est_funct <- function(incidH, date, hospstayfunct = covidhosp_stay_funct, x_values){
+#   lubridate::as_date(sort(unlist(sapply(x_values, function(x) {
+#     stay_durations <- hospstayfunct(n = incidH, x_values = x)
+#     sapply(stay_durations, function(duration) (0:(duration - 1)[1]) + date)  # Updated line
+#   }))))
+# }
 
 # ~ COVID-19 ensemble data --------------------------------------------------------------
 
@@ -286,7 +295,7 @@ select_flu_parameters <- function(state){
 # function requires dataframe with incidence Hosp of COVID-19 (empirical or ensemble) 
 # returns list with hosp_dates to be used in create_curr_hosp function 
 
-create_hosp_dates <- function(data){
+create_hosp_dates <- function(data, x_values){
   data_burden <- list()
   
   for (i in 1:nrow(data)){
@@ -298,13 +307,15 @@ create_hosp_dates <- function(data){
                                      date = data$date[i], 
                                      # think about how to write this better 
                                      #fluhosp_stay_funct
-                                     hospstayfunct = covidhosp_stay_funct
+                                     hospstayfunct = covidhosp_stay_funct,
+                                     x_values = x_values
                                      )
       
       )
   }
   return(data_burden)
 }
+
 
 
 create_hosp_dates_flu <- function(data){
@@ -349,6 +360,7 @@ create_curr_hosp <- function(data_burden){
     ungroup()
   return(new_data_burden)
 }
+
 
 
 
@@ -457,7 +469,10 @@ NJ_flu_ensemble_data %>%
 # Calculate burden --------------------------------------------------------
 
 ## covid
+#new hosp burden funct 
+#nj_covid_data_burden_1 <- create_hosp_dates(data = covid_data, x_values = c(6, 10,12))
 nj_covid_data_burden_1 <- create_hosp_dates(data = covid_data) 
+
 #NJ_A_ensemble_data_burden <- create_hosp_dates(data = NJ_A_ensemble_data_daily %>% dplyr::select(-cumH))
 NJ_covid_ensemble_data_burden_1 <- create_hosp_dates(data = NJ_covid_ensemble_data_daily %>% dplyr::select(-cumH))
 
@@ -475,7 +490,7 @@ NJ_flu_ensemble_data_burden <- create_curr_hosp(data_burden = NJ_flu_ensemble_da
 
 # Calculate weekly burden --------------------------------------------------------
 
-NJ_covid_ensemble_weekly_data_burden_1 <- create_hosp_dates(data = NJ_covid_ensemble_data)
+NJ_covid_ensemble_weekly_data_burden_1 <- create_hosp_dates(data = NJ_covid_ensemble_data, x_values = c(6, 10))
 NJ_covid_ensemble_weekly_data_burden <- create_curr_hosp(data_burden = NJ_covid_ensemble_weekly_data_burden_1)
 
 NJ_covid_empirical_weekly_data_burden_1 <- create_hosp_dates(data = covid_data)
