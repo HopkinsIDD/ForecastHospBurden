@@ -155,10 +155,13 @@ fluhosp_stay_funct <- function(n) {
     rpois(n = n, lambda = lambda)
 }
 
-burden_est_funct <- function(incidH, date, hospstayfunct = covidhosp_stay_funct){
-  lubridate::as_date(sort(unlist(sapply(X = hospstayfunct(n = incidH, lambda = los), function(x = X) (0:(x-1)) + date))))
+# burden_est_funct <- function(incidH, date, hospstayfunct = covidhosp_stay_funct){
+#   lubridate::as_date(sort(unlist(sapply(X = hospstayfunct(n = incidH, lambda = los), function(x = X) (0:(x-1)) + date))))
+# }
+burden_est_funct <- function(incidH, date, los, hospstayfunct = covidhosp_stay_funct) {
+  stay_lengths <- hospstayfunct(n = incidH, lambda = los)
+  return(date + stay_lengths)
 }
-
 
 # burden_est_funct <- function(incidH, date, hospstayfunct = covidhosp_stay_funct, x_values){
 #   lubridate::as_date(sort(unlist(sapply(x_values, function(x) {
@@ -308,10 +311,9 @@ create_hosp_dates <- function(data){
                                      los = data$los[i],
                                      # think about how to write this better 
                                      #fluhosp_stay_funct
-                                     hospstayfunct = covidhosp_stay_funct,
-                                     x_values = x_values
-                                     )
-      
+                                     hospstayfunct = covidhosp_stay_funct
+                    )
+                  
       )
   }
   return(data_burden)
@@ -368,12 +370,12 @@ create_curr_hosp <- function(data_burden){
 
 append_LOS_data <- function(data){
   data_los <- data %>%
-    slice(rep(row_number(), 10))
+    slice(rep(row_number(), 5))
   
   # Add a new column with LOS values 1 to 10 repeating for each group of rows
   data_los <- data_los %>%
     group_by_all() %>%
-    mutate(los = rep(1:10, each = n() / 10)) %>%
+    mutate(los = rep(3:7, each = n() / 5)) %>%
     ungroup()
   
   
@@ -381,11 +383,15 @@ append_LOS_data <- function(data){
   
 }
 
-NJ_flu_ensemble_data <- append_LOS_data(NJ_flu_ensemble_data)
+# dont run flu for now, takes a while to run 
+#NJ_flu_ensemble_data <- append_LOS_data(NJ_flu_ensemble_data)
 NJ_covid_ensemble_data <- append_LOS_data(NJ_covid_ensemble_data)
 
-covid_data <- append_LOS_data(covid_data)
-flu_data <- append_LOS_data(flu_data)
+#dont run unless need to update covid LOS 
+covid_data_los <- append_LOS_data(covid_data)
+#write_parquet(covid_data,  "data/los/covid_data_los.parquet")
+#covid_data_los <- arrow::read_parquet("data/los/covid_data_los.parquet")
+#flu_data <- append_LOS_data(flu_data)
 
 # Make data daily 
 
@@ -513,10 +519,11 @@ NJ_flu_ensemble_data_burden <- create_curr_hosp(data_burden = NJ_flu_ensemble_da
 
 # Calculate weekly burden --------------------------------------------------------
 
-NJ_covid_ensemble_weekly_data_burden_1 <- create_hosp_dates(data = NJ_covid_ensemble_data, x_values = c(6, 10))
+NJ_covid_ensemble_weekly_data_burden_1 <- create_hosp_dates(data = NJ_covid_ensemble_data)
 NJ_covid_ensemble_weekly_data_burden <- create_curr_hosp(data_burden = NJ_covid_ensemble_weekly_data_burden_1)
 
-NJ_covid_empirical_weekly_data_burden_1 <- create_hosp_dates(data = covid_data)
+# big dataset takes a while to run 
+NJ_covid_empirical_weekly_data_burden_1 <- create_hosp_dates(data = covid_data_los)
 NJ_covid_empirical_weekly_data_burden <- create_curr_hosp(data_burden = NJ_covid_empirical_weekly_data_burden_1)
 
 write_parquet(NJ_covid_ensemble_weekly_data_burden,  "data/hosp_burden/NJ_covid_ensemble_weekly_data_burden.parquet")
