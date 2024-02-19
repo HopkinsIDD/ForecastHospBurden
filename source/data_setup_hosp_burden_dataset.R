@@ -79,3 +79,20 @@ ensemble_forecast_interval <- ensemble_forecast %>%
   pivot_longer(cols = c(CI_99, CI_95, CI_90, CI_80, CI_60, CI_40, CI_20, CI_10),
                names_to = "incidH_CI", values_to = "hosp_forecast_interval") %>% 
   select(state, week, pathogen, scenario_id, incidH_CI, los, total_hosp, hosp_forecast_interval) 
+
+
+### EDA 
+### Empirical IH  
+# The response of interest the difference between..
+# the projected hosp burden estimates using empirical IH data vs. actual hosp buden data  
+
+# Key predictor: LOS 
+
+empirical_forecast %>%   
+  ggplot(aes(x = date, y = total_hosp_forecast)) +
+  geom_line(aes(color = as.factor(los))) +
+  geom_line(aes(y = total_hosp)) +
+  ggtitle("IH Empirical Forecast vs Hosp Burden by Length of Stay")
+
+
+
