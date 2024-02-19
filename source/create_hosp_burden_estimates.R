@@ -370,12 +370,12 @@ create_curr_hosp <- function(data_burden){
 
 append_LOS_data <- function(data){
   data_los <- data %>%
-    slice(rep(row_number(), 5))
+    slice(rep(row_number(), 10))
   
   # Add a new column with LOS values 1 to 10 repeating for each group of rows
   data_los <- data_los %>%
     group_by_all() %>%
-    mutate(los = rep(3:7, each = n() / 5)) %>%
+    mutate(los = rep(4:14, each = n() / 10)) %>%
     ungroup()
   
   
