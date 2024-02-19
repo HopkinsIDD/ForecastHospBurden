@@ -34,13 +34,6 @@ empirical_IH_NJ_total_hosp <- empirical_IH_NJ_total_hosp %>%
         total_hosp_forecast = curr_hosp) %>% 
   select(pathogen, date, los, total_hosp_forecast)
 
-# test <- ensemble_IH_NJ_total_hosp %>% 
-#   group_by(scenario_id, type_id, week = format(hosp_dates, "%Y-%U")) %>%  # Group by week using format()
-#   summarize(sum_value = sum(curr_hosp))     # Calculate total sum for each week
-
-# NJ_total_hosp1 <- NJ_total_hosp %>% 
-#   group_by(week = format(date, "%Y-%U")) %>%  # Group by week using format()
-#   summarize(sum_value = sum(total_hosp))  
   
 NJ_total_hosp_weekly <- NJ_total_hosp %>% 
   group_by(state, week = format(date - as.numeric(format(date, "%w")) + 1, "%Y-%m-%d")) %>%  # Group by week using format()
@@ -56,7 +49,8 @@ empirical_forecast <- inner_join(NJ_total_hosp, empirical_IH_NJ_total_hosp, by =
   select(state, date, pathogen, los, total_hosp, total_hosp_forecast)
 
 ensemble_forecast <-  inner_join(NJ_total_hosp_weekly, ensemble_IH_NJ_total_hosp_weekly, by = "week") %>% 
-  mutate(pathogen = 'COVID-19') %>% 
+  mutate(pathogen = 'COVID-19',
+         week = as.Date(week)) %>% 
   select(state, week, pathogen, scenario_id, type_id, los, total_hosp, total_hosp_forecast)
 
 # CREATE OUTCOME VARIABLE DATASETS ---------------------------------------------------------------
@@ -82,9 +76,48 @@ ensemble_forecast_interval <- ensemble_forecast %>%
 
 
 ### EDA 
+
+### Ensemble IH Forecast 
+
+ggplot(data = ensemble_forecast_interval) +
+  geom_bar(mapping = aes(x = los)) +
+  facet_wrap(~scenario_id)
+
+
+ggplot(data = ensemble_forecast_interval) +
+  geom_bar(mapping = aes(x = incidH_CI)) +
+  facet_wrap(~scenario_id)
+
+### 
+plot1 <- NJ_total_hosp %>% 
+  ggplot(aes(x = date, y = total_hosp)) +
+  geom_line(color = "blue") +
+  labs(title = "Census Hosp Burden")
+
+plot2 <- ensemble_IH_NJ_total_hosp %>% 
+  mutate(date = hosp_dates) %>% 
+  ggplot(aes(x = date, y = curr_hosp)) +
+  geom_line(aes(color = as.factor(los))) +
+  labs(title = "Ensemble IH Forecast")
+
+# Combine the plots
+combined_plot <- plot1 + plot2
+
+# Print the combined plot
+print(combined_plot)
+
+
+
+# The response of interest:
+### does the ensemble forecast CI contain the true hosp burden value
+### 0 = no; 1 = yes 
+
+# Key predictor: scenario_id, incidH_CI, LOS 
+
+
 ### Empirical IH  
-# The response of interest the difference between..
-# the projected hosp burden estimates using empirical IH data vs. actual hosp buden data  
+# The response of interest:
+### the difference between the projected hosp burden estimates using empirical IH data vs. actual hosp buden data  
 
 # Key predictor: LOS 
 
