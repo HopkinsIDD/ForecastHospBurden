@@ -156,7 +156,7 @@ fluhosp_stay_funct <- function(n) {
 }
 
 burden_est_funct <- function(incidH, date, hospstayfunct = covidhosp_stay_funct){
-  lubridate::as_date(sort(unlist(sapply(X = hospstayfunct(n = incidH, lambda = lambda), function(x = X) (0:(x-1)) + date))))
+  lubridate::as_date(sort(unlist(sapply(X = hospstayfunct(n = incidH, lambda = LOS), function(x = X) (0:(x-1)) + date))))
 }
 
 
@@ -305,6 +305,7 @@ create_hosp_dates <- function(data, x_values){
       expand_grid(hosp_dates = 
                     burden_est_funct(incidH = data$incidH[i], 
                                      date = data$date[i], 
+                                     lambda = lambda$lambda[i],
                                      # think about how to write this better 
                                      #fluhosp_stay_funct
                                      hospstayfunct = covidhosp_stay_funct,
@@ -328,6 +329,7 @@ create_hosp_dates_flu <- function(data){
       expand_grid(hosp_dates = 
                     burden_est_funct(incidH = data$incidH[i], 
                                      date = data$date[i], 
+                                     lambda = lambda$lambda[i],
                                      # think about how to write this better 
                                      #fluhosp_stay_funct
                                      hospstayfunct = fluhosp_stay_funct
@@ -362,6 +364,19 @@ create_curr_hosp <- function(data_burden){
 }
 
 
+###### create LOS list append to df
+
+append_LOS_data <- function (data){
+  data_los <- df %>%
+    slice(rep(row_number(), 3))
+  
+  # Add a new column with values 1, 2, 3 repeating for each row
+  data_los <- data_los %>%
+    mutate(los = rep(1:10, each = nrow(data)))
+  
+  return(data_los)
+  
+}
 
 
 # Make data daily 
