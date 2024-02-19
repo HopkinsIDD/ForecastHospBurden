@@ -375,7 +375,7 @@ append_LOS_data <- function(data){
   # Add a new column with LOS values 1 to 10 repeating for each group of rows
   data_los <- data_los %>%
     group_by_all() %>%
-    mutate(los = rep(4:14, each = n() / 10)) %>%
+    mutate(los = rep(5:14, each = n() / 10)) %>%
     ungroup()
   
   
@@ -525,7 +525,7 @@ NJ_covid_ensemble_weekly_data_burden <- create_curr_hosp(data_burden = NJ_covid_
 # big dataset takes a while to run 
 NJ_covid_empirical_weekly_data_burden_1 <- create_hosp_dates(data = covid_data_los)
 NJ_covid_empirical_weekly_data_burden <- create_curr_hosp(data_burden = NJ_covid_empirical_weekly_data_burden_1)
-
+#library(arrow)
 write_parquet(NJ_covid_ensemble_weekly_data_burden,  "data/hosp_burden/NJ_covid_ensemble_weekly_data_burden.parquet")
 write_parquet(NJ_covid_empirical_weekly_data_burden,  "data/hosp_burden/NJ_covid_empirical_weekly_data_burden.parquet")
 
