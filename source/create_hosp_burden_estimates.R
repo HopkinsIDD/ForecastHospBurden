@@ -295,7 +295,7 @@ select_flu_parameters <- function(state){
 # function requires dataframe with incidence Hosp of COVID-19 (empirical or ensemble) 
 # returns list with hosp_dates to be used in create_curr_hosp function 
 
-create_hosp_dates <- function(data, x_values){
+create_hosp_dates <- function(data){
   data_burden <- list()
   
   for (i in 1:nrow(data)){
@@ -305,7 +305,7 @@ create_hosp_dates <- function(data, x_values){
       expand_grid(hosp_dates = 
                     burden_est_funct(incidH = data$incidH[i], 
                                      date = data$date[i], 
-                                     lambda = lambda$lambda[i],
+                                     los = data$los[i],
                                      # think about how to write this better 
                                      #fluhosp_stay_funct
                                      hospstayfunct = covidhosp_stay_funct,
@@ -366,18 +366,26 @@ create_curr_hosp <- function(data_burden){
 
 ###### create LOS list append to df
 
-append_LOS_data <- function (data){
-  data_los <- df %>%
+append_LOS_data <- function(data){
+  data_los <- data %>%
     slice(rep(row_number(), 10))
   
-  # Add a new column with values 1, 2, 3 repeating for each row
+  # Add a new column with LOS values 1 to 10 repeating for each group of rows
   data_los <- data_los %>%
-    mutate(los = rep(1:10, each = nrow(data)))
+    group_by_all() %>%
+    mutate(los = rep(1:10, each = n() / 10)) %>%
+    ungroup()
+  
   
   return(data_los)
   
 }
 
+NJ_flu_ensemble_data <- append_LOS_data(NJ_flu_ensemble_data)
+NJ_covid_ensemble_data <- append_LOS_data(NJ_covid_ensemble_data)
+
+covid_data <- append_LOS_data(covid_data)
+flu_data <- append_LOS_data(flu_data)
 
 # Make data daily 
 
