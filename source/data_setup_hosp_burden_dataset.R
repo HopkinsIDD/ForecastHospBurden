@@ -29,11 +29,12 @@ empirical_IH_NJ_total_hosp <- arrow::read_parquet(opt$gt_NJ_IH_empirical_data_pa
 ensemble_IH_NJ_total_hosp <- arrow::read_parquet(opt$gt_NJ_IH_ensemble_data_path)
 
 # CLEAN & REFORMAT DATA ---------------------------------------------------------------
-empirical_IH_NJ_total_hosp <- empirical_IH_NJ_total_hosp %>% 
+empirical_IH_NJ_total_hosp_weekly <- empirical_IH_NJ_total_hosp %>% 
   rename(date = hosp_dates,
-        total_hosp_forecast = curr_hosp) %>% 
-  select(pathogen, date, los, total_hosp_forecast)
-
+         total_hosp_forecast = curr_hosp) %>% 
+  group_by(pathogen, los, week = format(date - as.numeric(format(date, "%w")) + 1, "%Y-%m-%d")) %>%  # Group by week
+  summarize(total_hosp_forecast = sum(total_hosp_forecast)) %>% 
+  select(pathogen, week, los, total_hosp_forecast)
   
 NJ_total_hosp_weekly <- NJ_total_hosp %>% 
   group_by(state, week = format(date - as.numeric(format(date, "%w")) + 1, "%Y-%m-%d")) %>%  # Group by week using format()
@@ -45,8 +46,11 @@ ensemble_IH_NJ_total_hosp_weekly <- ensemble_IH_NJ_total_hosp %>%
 
 
 # CREATE DATASETS ---------------------------------------------------------------
-empirical_forecast <- inner_join(NJ_total_hosp, empirical_IH_NJ_total_hosp, by = "date") %>% 
-  select(state, date, pathogen, los, total_hosp, total_hosp_forecast)
+#empirical_forecast <- inner_join(NJ_total_hosp, empirical_IH_NJ_total_hosp_weekly, by = "date") %>% 
+#  select(state, date, pathogen, los, total_hosp, total_hosp_forecast)
+
+empirical_forecast_weekly <- inner_join(NJ_total_hosp_weekly, empirical_IH_NJ_total_hosp_weekly, by = "week") %>% 
+  select(state, week, pathogen, los, total_hosp, total_hosp_forecast)
 
 ensemble_forecast <-  inner_join(NJ_total_hosp_weekly, ensemble_IH_NJ_total_hosp_weekly, by = "week") %>% 
   mutate(pathogen = 'COVID-19',
@@ -55,8 +59,10 @@ ensemble_forecast <-  inner_join(NJ_total_hosp_weekly, ensemble_IH_NJ_total_hosp
 
 # CREATE OUTCOME VARIABLE DATASETS ---------------------------------------------------------------
 
-empirical_forecast <- empirical_forecast %>% 
-  mutate(dif = total_hosp_forecast - total_hosp)
+empirical_forecast_weekly <- empirical_forecast_weekly %>% 
+  mutate(dif = total_hosp_forecast - total_hosp,
+         ratio = total_hosp_forecast/total_hosp,
+         week = as.Date(week))
 
 ensemble_forecast_interval <- ensemble_forecast %>% 
   pivot_wider(names_from = type_id, 
@@ -121,11 +127,34 @@ print(combined_plot)
 
 # Key predictor: LOS 
 
-empirical_forecast %>%   
-  ggplot(aes(x = date, y = total_hosp_forecast)) +
+
+empirical_forecast_weekly %>%   
+  ggplot(aes(x = week, y = total_hosp_forecast)) +
   geom_line(aes(color = as.factor(los))) +
   geom_line(aes(y = total_hosp)) +
+  labs(x="Week", y="Total Hospitalizations", color = "LOS") + 
   ggtitle("IH Empirical Forecast vs Hosp Burden by Length of Stay")
+
+empirical_forecast_weekly %>%   
+  ggplot(aes(x = week)) +
+  geom_line(aes(y = total_hosp_forecast, color = as.factor(los))) +
+  geom_line(aes(y = total_hosp, color = "Observed")) +
+  labs(x = "Week", y = "Total Hospitalizations", color = "Legend") + 
+  ggtitle("IH Empirical Forecast vs Hosp Burden by Length of Stay") +
+  scale_color_manual(values = c("black", "red", "blue"), 
+                     breaks = c("Observed", "1", "2"), 
+                     labels = c("Observed", "1", "2"))
+empirical_forecast_weekly %>%   
+  ggplot(aes(x = week)) +
+  geom_line(aes(y = total_hosp_forecast, color = as.factor(los))) +
+  geom_line(aes(y = total_hosp, color = "Observed")) +
+  labs(x = "Week", y = "Total Hospitalizations", color = "Legend") + 
+  ggtitle("IH Empirical Forecast vs Hosp Burden by Length of Stay") +
+  scale_color_manual(values = c("black", "red", "blue", "green", "orange", "purple", "yellow", "cyan", "magenta", "brown", "pink"), 
+                     breaks = c("Observed", as.character(unique(empirical_forecast_weekly$los))),
+                     labels = c("Observed", as.character(unique(empirical_forecast_weekly$los))))
+
+
 
 
 
