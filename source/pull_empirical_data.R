@@ -15,10 +15,10 @@ library(flepicommon)
 # source data functions
 source("source/data_setup_source.R")
 
-# opt <- list()
-# opt$gt_data_source <- "hhs_hosp"
-# opt$delphi_api_key <- "04e7369e1541a"
-# opt$gt_data_path <- "data/nj_covid_hosp.parquet"
+ opt <- list()
+ opt$gt_data_source <- "hhs_hosp"
+ opt$delphi_api_key <- "04e7369e1541a"
+ opt$gt_data_path <- "data/nj_covid_hosp.parquet"
 
 # SET DELPHI API KEY ------------------------------------------------------
 
@@ -177,3 +177,36 @@ cat(paste0("Ground truth data saved\n",
 
 
 # END
+
+### PT 2 
+
+#add in additional states
+
+# Filter to states we care about
+locs_2 <- c("NJ", "MD", "NY", "PA")
+us_data_sample <- us_data %>%
+  filter(source %in% locs_2) %>%
+  filter(!is.na(source)) 
+
+#  filter(source == "MD" | source == "NJ" | source == "NY" | source == "PA") %>%
+
+
+
+# ~ Fix non-numeric -------------------------------------------------------------
+#  -- leave NAs so its not assuming an NA is a 0 and fitting to it
+
+us_data_sample <- us_data_sample %>%
+  # mutate(across(starts_with("incid"), ~ replace_na(.x, 0))) %>%
+  mutate(across(starts_with("incid"), ~ as.numeric(.x)))
+
+
+
+# Save
+arrow::write_parquet(us_data_sample, "data/state_sample_covid_hosp.parquet")
+
+
+
+cat(paste0("Ground truth data saved\n",
+           "  -- file:      ", "data/state_sample_covid_hosp.parquet",".\n",
+           "  -- outcomes:  ", paste(grep("incid", colnames(us_data_sample), value = TRUE), collapse = ", ")))
+
