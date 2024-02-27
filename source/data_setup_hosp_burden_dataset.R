@@ -155,6 +155,35 @@ empirical_forecast_weekly %>%
                      labels = c("Observed", as.character(unique(empirical_forecast_weekly$los))))
 
 
+empirical_forecast_weekly %>%   
+  mutate(week = as.Date(week)) %>% 
+  filter(year(week) == 2024) %>% 
+  filter(los == 5 | los == 14) %>% 
+  ggplot(aes(x = week, y = total_hosp_forecast)) +
+  geom_line(aes(color = as.factor(los))) +
+  geom_line(aes(y = total_hosp)) +
+  labs(x="Week", y="Total Hospitalizations", color = "LOS") + 
+  ggtitle("IH Empirical Forecast vs Hosp Burden by Length of Stay")
+
+empirical_forecast_weekly %>%   
+  mutate(week = as.Date(week)) %>% 
+  filter(los == 5 | los == 14) %>% 
+  ggplot(aes(x = week, y = total_hosp_forecast)) +
+  geom_line(aes(color = as.factor(los))) +
+  geom_line(aes(y = total_hosp)) +
+  labs(x="Week", y="Total Hospitalizations", color = "LOS") + 
+  ggtitle("IH Empirical Forecast vs Hosp Burden by Length of Stay")
 
 
+
+## look at LOS affect on total_hosp_forecast 
+empirical_forecast_weekly %>% 
+  select(week, los, total_hosp_forecast) %>% 
+  group_by(los) %>% 
+  summarise(average_hosp = mean(total_hosp_forecast))
+
+
+avg_forecast <- empirical_forecast_weekly %>%
+  group_by(los) %>%
+  summarize(avg_total_hosp_forecast = mean(total_hosp_forecast, na.rm = TRUE))
 
