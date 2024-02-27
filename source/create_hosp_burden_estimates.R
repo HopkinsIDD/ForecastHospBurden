@@ -129,11 +129,18 @@ flu_ensemble_data <- flu_ensemble_data %>%
 # BUILD SIMPLE EXAMPLE BURDEN ESTIMATOR -----------------------------------
 
 # create functions for sampling hospitalization duration 
-covidhosp_stay_funct <- function(n, lambda) {
-  rpois(n = n, lambda = lambda)
-}
-  
+
+# }
 #  -- currently these are not based on any lit or data -- need to update
+covidhosp_stay_funct <- function(n) {
+  rpois(n = n, lambda = 6)
+}
+
+# create functions for sampling hospitalization duration 
+# use this code if need covidhosp_stay_funct to take multiple values of lambda 
+# covidhosp_stay_funct <- function(n, lambda) {
+#   rpois(n = n, lambda = lambda)
+
 # covidhosp_stay_funct <- function(n, x_values) {
 #   
 #   stay_durations_list <- list()
@@ -152,23 +159,24 @@ covidhosp_stay_funct <- function(n, lambda) {
 #covidhosp_stay_funct(100, x_values = c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10))
 
 fluhosp_stay_funct <- function(n) {
-    rpois(n = n, lambda = lambda)
+  rpois(n = n, lambda = 10)
 }
 
-# burden_est_funct <- function(incidH, date, hospstayfunct = covidhosp_stay_funct){
-#   lubridate::as_date(sort(unlist(sapply(X = hospstayfunct(n = incidH, lambda = los), function(x = X) (0:(x-1)) + date))))
+# use this code if need covidhosp_stay_funct to take multiple values of lambda 
+# fluhosp_stay_funct <- function(n) {
+#     rpois(n = n, lambda = lambda)
 # }
-burden_est_funct <- function(incidH, date, los, hospstayfunct = covidhosp_stay_funct) {
-  stay_lengths <- hospstayfunct(n = incidH, lambda = los)
-  return(date + stay_lengths)
+
+burden_est_funct <- function(incidH, date, hospstayfunct = covidhosp_stay_funct){
+  lubridate::as_date(sort(unlist(sapply(X = hospstayfunct(n = incidH), function(x = X) (0:(x-1)) + date))))
 }
 
-# burden_est_funct <- function(incidH, date, hospstayfunct = covidhosp_stay_funct, x_values){
-#   lubridate::as_date(sort(unlist(sapply(x_values, function(x) {
-#     stay_durations <- hospstayfunct(n = incidH, x_values = x)
-#     sapply(stay_durations, function(duration) (0:(duration - 1)[1]) + date)  # Updated line
-#   }))))
+#use this burden est function if need to take in multiple LOS value 
+# burden_est_funct <- function(incidH, date, los, hospstayfunct = covidhosp_stay_funct) {
+#   stay_lengths <- hospstayfunct(n = incidH, lambda = los)
+#   return(date + stay_lengths)
 # }
+
 
 # ~ COVID-19 ensemble data --------------------------------------------------------------
 
