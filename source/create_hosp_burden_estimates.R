@@ -27,7 +27,7 @@ opt$gt_flu_ensemble_data_path <- "data/2024-01-06-FluSight-ensemble.parquet"
 opt$gt_NJ_total_hosp_data_path <- "data/NJ_total_hosp.parquet"
 
 
-#source("source/pull_empirical_data.R")
+source("source/pull_empirical_data.R")
 
 
 
@@ -130,16 +130,16 @@ flu_ensemble_data <- flu_ensemble_data %>%
 
 # create functions for sampling hospitalization duration 
 
-# }
+
 #  -- currently these are not based on any lit or data -- need to update
 covidhosp_stay_funct <- function(n) {
-  rpois(n = n, lambda = 6)
+  rpois(n = n, lambda = 5)
 }
 
 # create functions for sampling hospitalization duration 
 # use this code if need covidhosp_stay_funct to take multiple values of lambda 
 # covidhosp_stay_funct <- function(n, lambda) {
-#   rpois(n = n, lambda = lambda)
+#   rpois(n = n, lambda = lambda)}
 
 # covidhosp_stay_funct <- function(n, x_values) {
 #   
@@ -375,31 +375,31 @@ create_curr_hosp <- function(data_burden){
 
 
 ###### create LOS list append to df
-
-append_LOS_data <- function(data){
-  data_los <- data %>%
-    slice(rep(row_number(), 10))
-  
-  # Add a new column with LOS values 1 to 10 repeating for each group of rows
-  data_los <- data_los %>%
-    group_by_all() %>%
-    mutate(los = rep(5:14, each = n() / 10)) %>%
-    ungroup()
-  
-  
-  return(data_los)
-  
-}
-
-# dont run flu for now, takes a while to run 
-#NJ_flu_ensemble_data <- append_LOS_data(NJ_flu_ensemble_data)
-NJ_covid_ensemble_data <- append_LOS_data(NJ_covid_ensemble_data)
-
-#dont run unless need to update covid LOS 
-covid_data_los <- append_LOS_data(covid_data)
-#write_parquet(covid_data,  "data/los/covid_data_los.parquet")
-#covid_data_los <- arrow::read_parquet("data/los/covid_data_los.parquet")
-#flu_data <- append_LOS_data(flu_data)
+## ** IGNORE FOR NOW** only need if using multiple values of LOS 
+# append_LOS_data <- function(data){
+#   data_los <- data %>%
+#     slice(rep(row_number(), 10))
+#   
+#   # Add a new column with LOS values 1 to 10 repeating for each group of rows
+#   data_los <- data_los %>%
+#     group_by_all() %>%
+#     mutate(los = rep(5:14, each = n() / 10)) %>%
+#     ungroup()
+#   
+#   
+#   return(data_los)
+#   
+# }
+# 
+# # dont run flu for now, takes a while to run 
+# #NJ_flu_ensemble_data <- append_LOS_data(NJ_flu_ensemble_data)
+# NJ_covid_ensemble_data <- append_LOS_data(NJ_covid_ensemble_data)
+# 
+# #dont run unless need to update covid LOS 
+# covid_data_los <- append_LOS_data(covid_data)
+# #write_parquet(covid_data,  "data/los/covid_data_los.parquet")
+# #covid_data_los <- arrow::read_parquet("data/los/covid_data_los.parquet")
+# #flu_data <- append_LOS_data(flu_data)
 
 # Make data daily 
 
