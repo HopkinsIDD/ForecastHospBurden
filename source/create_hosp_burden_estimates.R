@@ -728,4 +728,17 @@ upper_covid_burden <- NJ_covid_ensemble_data_burden %>%
 lower_covid_burden <- NJ_covid_ensemble_data_burden %>% 
   filter(type_id ==0.025 & scenario_id == "B-2023-04-16")
 
+##### WRITING OUT FILES TO SAVE 
+
+
+NJ_covid_ensemble_weekly_data_burden_1 <- create_hosp_dates(data = NJ_covid_ensemble_data)
+NJ_covid_ensemble_weekly_data_burden <- create_curr_hosp(data_burden = NJ_covid_ensemble_weekly_data_burden_1)
+write_parquet(NJ_covid_ensemble_weekly_data_burden,  "data/hosp_burden/NJ_covid_ensemble_weekly_data_burden.parquet")
+
+# big dataset takes a while to run 
+NJ_covid_empirical_weekly_data_burden_1 <- create_hosp_dates(data = covid_data_los)
+NJ_covid_empirical_weekly_data_burden <- create_curr_hosp(data_burden = NJ_covid_empirical_weekly_data_burden_1)
+#library(arrow)
+write_parquet(NJ_covid_empirical_weekly_data_burden,  "data/hosp_burden/NJ_covid_empirical_weekly_data_burden.parquet")
+
 
