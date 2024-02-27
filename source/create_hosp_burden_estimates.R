@@ -316,7 +316,6 @@ create_hosp_dates <- function(data){
       expand_grid(hosp_dates = 
                     burden_est_funct(incidH = data$incidH[i], 
                                      date = data$date[i], 
-                                     los = data$los[i],
                                      # think about how to write this better 
                                      #fluhosp_stay_funct
                                      hospstayfunct = covidhosp_stay_funct
@@ -739,14 +738,10 @@ lower_covid_burden <- NJ_covid_ensemble_data_burden %>%
 ##### WRITING OUT FILES TO SAVE 
 
 
-NJ_covid_ensemble_weekly_data_burden_1 <- create_hosp_dates(data = NJ_covid_ensemble_data)
-NJ_covid_ensemble_weekly_data_burden <- create_curr_hosp(data_burden = NJ_covid_ensemble_weekly_data_burden_1)
-write_parquet(NJ_covid_ensemble_weekly_data_burden,  "data/hosp_burden/NJ_covid_ensemble_weekly_data_burden.parquet")
-
-# big dataset takes a while to run 
-NJ_covid_empirical_weekly_data_burden_1 <- create_hosp_dates(data = covid_data_los)
+NJ_covid_empirical_weekly_data_burden_1 <- create_hosp_dates(data = covid_data)
 NJ_covid_empirical_weekly_data_burden <- create_curr_hosp(data_burden = NJ_covid_empirical_weekly_data_burden_1)
 #library(arrow)
-write_parquet(NJ_covid_empirical_weekly_data_burden,  "data/hosp_burden/NJ_covid_empirical_weekly_data_burden.parquet")
+
+write_parquet(NJ_covid_empirical_weekly_data_burden,  "data/hosp_burden/NJ_covid_empirical_weekly_data_burden_LOS_5.parquet")
 
 
