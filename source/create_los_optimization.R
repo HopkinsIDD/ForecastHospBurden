@@ -35,18 +35,18 @@ nj_TotalH_data <- arrow::read_parquet(opt$gt_NJ_total_hosp_data_path)
 
 covid_incidH_data <- incidH_data %>%
   filter(pathogen == "COVID-19") %>%
-  filter(!is.na(incidH) & incidH>0)
+  filter(!is.na(incidH) & incidH>0) # is there a reason we don't want to include 0's (just one day) 
 
 # BUILD SIMPLE EXAMPLE BURDEN ESTIMATOR -----------------------------------
 
 # create functions for sampling hospitalization duration 
- # covidhosp_stay_funct <- function(n) {
- #   rpois(n = n, lambda = LOS)
- # }
- # 
- # burden_est_funct <- function(incidH, date, hospstayfunct = covidhosp_stay_funct){
- #   lubridate::as_date(sort(unlist(sapply(X = hospstayfunct(n = incidH), function(x = X) (0:(x-1)) + date))))
- # }
+covidhosp_stay_funct <- function(n) {
+   rpois(n = n, lambda = 5)
+ }
+
+burden_est_funct <- function(incidH, date, hospstayfunct = covidhosp_stay_funct){
+   lubridate::as_date(sort(unlist(sapply(X = hospstayfunct(n = incidH), function(x = X) (0:(x-1)) + date))))
+ }
 
 # ~ Functions for Empirical and Ensemble data --------------------------------------
 create_hosp_dates <- function(data){
@@ -67,7 +67,7 @@ create_hosp_dates <- function(data){
   return(data_burden)
 }
 
-create_curr_hosp <- function(data_burden, LOS){
+create_curr_hosp <- function(data_burden){
   new_data_burden <- data_burden %>%
     bind_rows() %>%
     as_tibble() %>%
@@ -81,57 +81,73 @@ create_curr_hosp <- function(data_burden, LOS){
 # CLEAN DATA FOR MERGE ----------------------------------- 
 clean_observed <- function(observed){
   observed <- observed %>% 
-    rename(date = hosp_dates,
-           total_hosp_forecast = curr_hosp) %>% 
-    group_by(pathogen, los, week = format(date - as.numeric(format(date, "%w")) + 1, "%Y-%m-%d")) %>%  # Group by week
-    summarize(total_hosp_forecast = sum(total_hosp_forecast)) %>% 
-    select(pathogen, week, los, total_hosp_forecast)
-  
-  return(observed)
-}
-
-clean_expected <- function(expected){
-  
-  expected <- expected %>% 
     group_by(state, week = format(date - as.numeric(format(date, "%w")) + 1, "%Y-%m-%d")) %>%  # Group by week using format()
     mutate(week = as.Date(week)) %>% 
-    summarize(total_hosp = sum(total_hosp))  
+    summarize(total_hosp = sum(total_hosp)) %>% 
+  
+  return(observed)
+
+}
+
+
+clean_expected <- function(expected){
+  expected <- expected %>% 
+    rename(date = hosp_dates,
+           total_hosp_forecast = curr_hosp) %>% 
+    group_by(pathogen, week = format(date - as.numeric(format(date, "%w")) + 1, "%Y-%m-%d")) %>%  # rm los from group_by
+    mutate(week = as.Date(week)) %>% 
+    select(pathogen, week, total_hosp_forecast) # may need to keep state here when adding in more states 
   
   return(expected)
 }
 
-optimize_los <- function(LOS, data, observed){
-  
-  covidhosp_stay_funct <- function(n, LOS) {
-    rpois(n = n, lambda = LOS)
-  }
+## checking everything runs outside of function -------
 
-  burden_est_funct <- function(incidH, date, LOS, hospstayfunct = covidhosp_stay_funct){
-    lubridate::as_date(sort(unlist(sapply(X = hospstayfunct(n = incidH, LOS=LOS), function(x = X) (0:(x-1)) + date))))
-  }
+# expected_list <- create_hosp_dates(data = covid_incidH_data)
+# expected_hosp <- create_curr_hosp(data_burden = expected_list)
+# 
+# observed <- clean_observed(observed = nj_TotalH_data)
+# expected <- clean_expected(expected = expected_hosp)
+# 
+# combined <- inner_join(observed, expected, by = "week") %>% 
+#   select(state, week, pathogen, total_hosp, total_hosp_forecast) %>% 
+#   mutate(absolute_difference = abs(total_hosp - total_hosp_forecast)) %>% 
+#   filter(!is.na(absolute_difference)) %>% 
+#   summarize(sum_absolute_difference = sum(absolute_difference)) # mean or median instead here? 
+
+optimize_los <- function(data, observed){
   
+  # covidhosp_stay_funct <- function(n, LOS) {
+  #   rpois(n = n, lambda = LOS)
+  # }
+  # 
+  # burden_est_funct <- function(incidH, date, LOS, hospstayfunct = covidhosp_stay_funct){
+  #   lubridate::as_date(sort(unlist(sapply(X = hospstayfunct(n = incidH, LOS=LOS), function(x = X) (0:(x-1)) + date))))
+  # }
+  # 
   expected_list <- create_hosp_dates(data)
-  expected <- create_curr_hosp(data_burden = expected_list, LOS = LOS)
+  expected <- create_curr_hosp(data_burden = expected_list)
   
   observed <- clean_observed(observed)
   expected <- clean_expected(expected)
   
   combined <- inner_join(observed, expected, by = "week") %>% 
-    select(state, week, pathogen, los, total_hosp, total_hosp_forecast) %>% 
+    select(state, week, pathogen, total_hosp, total_hosp_forecast) %>% 
     mutate(absolute_difference = abs(total_hosp - total_hosp_forecast)) %>% 
-    summarize(sum_absolute_difference = sum(absolute_difference))
+    filter(!is.na(absolute_difference)) %>% 
+    summarize(sum_absolute_difference = sum(absolute_difference)) # mean or median instead here? 
     
     return(combined$sum_absolute_difference)
   
 }
 
 
-outcome <- optimize_los(LOS = LOS, data = incidH_data, observed = covid_incidH_data)
+#abs_dif <- optimize_los(LOS = LOS, data = incidH_data, observed = covid_incidH_data)
 
 los_range <- c(1,15)
 # tol (accuracy)  is the default value (approx. 0.0001)
-los_min <- optimize(optimize_funct, los_range, lower = min(los_range), upper = max(los_range),
-                    maximum = FALSE)
+los_min <- optimize(optimize_los, los_range, data = incidH_data, observed = covid_incidH_data, 
+                    lower = min(los_range), upper = max(los_range), maximum = FALSE)
 
 
 
