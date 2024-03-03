@@ -22,6 +22,7 @@ opt <- list()
 opt$gt_data_source <- "hhs_hosp"
 opt$delphi_api_key <- "04e7369e1541a"
 opt$gt_data_path <- "data/nj_covid_hosp.parquet"
+
 opt$gt_covid_ensemble_data_path <- "data/ensemble_lop/2023-04-16-Ensemble_LOP-Inc_Hosp.parquet"
 opt$gt_flu_ensemble_data_path <- "data/2024-01-06-FluSight-ensemble.parquet"
 opt$gt_NJ_total_hosp_data_path <- "data/NJ_total_hosp.parquet"
@@ -133,7 +134,7 @@ flu_ensemble_data <- flu_ensemble_data %>%
 
 #  -- currently these are not based on any lit or data -- need to update
 covidhosp_stay_funct <- function(n) {
-  rpois(n = n, lambda = 5)
+  rpois(n = n, lambda = 4.6)
 }
 
 # create functions for sampling hospitalization duration 
@@ -159,7 +160,7 @@ covidhosp_stay_funct <- function(n) {
 #covidhosp_stay_funct(100, x_values = c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10))
 
 fluhosp_stay_funct <- function(n) {
-  rpois(n = n, lambda = 10)
+  rpois(n = n, lambda = 4.6)
 }
 
 # use this code if need covidhosp_stay_funct to take multiple values of lambda 
@@ -316,6 +317,7 @@ create_hosp_dates <- function(data){
       expand_grid(hosp_dates = 
                     burden_est_funct(incidH = data$incidH[i], 
                                      date = data$date[i], 
+                                     #los = data$los[i], 
                                      # think about how to write this better 
                                      #fluhosp_stay_funct
                                      hospstayfunct = covidhosp_stay_funct
@@ -338,7 +340,7 @@ create_hosp_dates_flu <- function(data){
       expand_grid(hosp_dates = 
                     burden_est_funct(incidH = data$incidH[i], 
                                      date = data$date[i], 
-                                     los = data$los[i],
+                                     #los = data$los[i],
                                      # think about how to write this better 
                                      #fluhosp_stay_funct
                                      hospstayfunct = fluhosp_stay_funct
@@ -348,14 +350,6 @@ create_hosp_dates_flu <- function(data){
   }
   return(data_burden)
 }
-# think about how to write this better 
-#fluhosp_stay_funct
-
-# if ( data == "NJ_flu_ensemble_data" | data == "flu_data") {
-#   return(hospstayfunct = fluhosp_stay_funct)
-# } else{
-#   return(hospstayfunct = covidhosp_stay_funct)
-# }
 
 
 # current hospitalization function for empirical and ensemble data 
@@ -742,6 +736,6 @@ NJ_covid_empirical_weekly_data_burden_1 <- create_hosp_dates(data = covid_data)
 NJ_covid_empirical_weekly_data_burden <- create_curr_hosp(data_burden = NJ_covid_empirical_weekly_data_burden_1)
 #library(arrow)
 
-write_parquet(NJ_covid_empirical_weekly_data_burden,  "data/hosp_burden/NJ_covid_empirical_weekly_data_burden_LOS_5.parquet")
+write_parquet(NJ_covid_empirical_weekly_data_burden,  "data/hosp_burden/NJ_covid_empirical_weekly_data_burden_LOS_4x.parquet")
 
 
