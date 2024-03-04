@@ -20,15 +20,14 @@ source("source/data_setup_source.R")
 opt <- list()
 opt$gt_data_source <- "hhs_hosp"
 opt$delphi_api_key <- "04e7369e1541a"
-opt$gt_data_path <- "data/nj_covid_hosp.parquet"
-opt$gt_NJ_total_hosp_data_path <- "data/NJ_total_hosp.parquet"
-
+opt$gt_NJ_total_hosp_data_path <- "data/NJ_currently_hospitalized_covid19_patients.parquet" #updated file name to new parquet folder
 
 # only need to run this if want to update data
 opt$gt_data_path <- "data/nj_covid_hosp.parquet"
-opt$gt_NJ_total_hosp_data_path <- "data/NJ_total_hosp.parquet"
+opt$gt_data_path_states <- "data/pull_empirical_incidH_state_data.parquet"
 
 incidH_data <- arrow::read_parquet(opt$gt_data_path)
+incidH_data_states <- arrow::read_parquet(opt$gt_data_path)
 nj_TotalH_data <- arrow::read_parquet(opt$gt_NJ_total_hosp_data_path)
 
 # ~ COVID-19 --------------------------------------------------------------
@@ -141,12 +140,14 @@ optimize_los <- function(data, observed){
   
 }
 
+# check optimize function returns one single outcome for optimize function 
+outcome <- optimize_los(data = covid_incidH_data, observed = nj_TotalH_data)
 
 #abs_dif <- optimize_los(LOS = LOS, data = incidH_data, observed = covid_incidH_data)
 
 los_range <- c(1,15)
 # tol (accuracy)  is the default value (approx. 0.0001)
-los_min <- optimize(optimize_los, los_range, data = incidH_data, observed = covid_incidH_data, 
+los_min <- optimize(optimize_los, los_range, data = covid_incidH_data, observed = nj_TotalH_data, 
                     lower = min(los_range), upper = max(los_range), maximum = FALSE)
 
 
