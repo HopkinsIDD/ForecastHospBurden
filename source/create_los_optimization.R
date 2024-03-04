@@ -49,16 +49,17 @@ covid_incidH_data_states %>%
 # BUILD SIMPLE EXAMPLE BURDEN ESTIMATOR -----------------------------------
 
 # create functions for sampling hospitalization duration 
-covidhosp_stay_funct <- function(n) {
-   rpois(n = n, lambda = 5)
+covidhosp_stay_funct <- function(n, los = 5) {
+   rpois(n = n, lambda = los) 
  }
 
-burden_est_funct <- function(incidH, date, hospstayfunct = covidhosp_stay_funct){
-   lubridate::as_date(sort(unlist(sapply(X = hospstayfunct(n = incidH), function(x = X) (0:(x-1)) + date))))
- }
+burden_est_funct <- function(incidH, date, hospstayfunct = covidhosp_stay_funct, los = 5){
+    lubridate::as_date(sort(unlist(sapply(X = hospstayfunct(n = incidH, los = los), function(x = X) (0:(x-1)) + date))))
+}
+
 
 # ~ Functions for Empirical and Ensemble data --------------------------------------
-create_hosp_dates <- function(data){
+create_hosp_dates <- function(data, los = 5){
   data_burden <- list()
   
   for (i in 1:nrow(data)){
@@ -68,9 +69,9 @@ create_hosp_dates <- function(data){
       expand_grid(hosp_dates = 
                     burden_est_funct(incidH = data$incidH[i], 
                                      date = data$date[i], 
-                                     hospstayfunct = covidhosp_stay_funct
+                                     hospstayfunct = covidhosp_stay_funct,
+                                     los = los
                     )
-                  
       )
   }
   return(data_burden)
@@ -125,7 +126,7 @@ clean_expected <- function(expected){
 #   summarize(sum_absolute_difference = sum(absolute_difference)) # mean or median instead here? 
 
 # Create function to be read into optimization ----------------------------
-optimize_los <- function(data, observed){
+optimize_los <- function(los, data, observed){
   
   # covidhosp_stay_funct <- function(n, LOS) {
   #   rpois(n = n, lambda = LOS)
@@ -135,14 +136,14 @@ optimize_los <- function(data, observed){
   #   lubridate::as_date(sort(unlist(sapply(X = hospstayfunct(n = incidH, LOS=LOS), function(x = X) (0:(x-1)) + date))))
   # }
   # 
-  expected_list <- create_hosp_dates(data)
+  expected_list <- create_hosp_dates(data, los = los)
   expected <- create_curr_hosp(data_burden = expected_list)
   
-  observed <- clean_observed(observed)
+  # observed <- clean_observed(observed)
   expected <- clean_expected(expected)
   
   combined <- inner_join(observed, expected, by = "week") %>% 
-    select(state, week, pathogen, total_hosp, total_hosp_forecast) %>% 
+    dplyr::select(state, week, pathogen, total_hosp, total_hosp_forecast) %>% 
     mutate(absolute_difference = abs(total_hosp - total_hosp_forecast)) %>% 
     filter(!is.na(absolute_difference)) %>% 
     summarize(sum_absolute_difference = sum(absolute_difference)) # mean or median instead here? 
@@ -152,14 +153,21 @@ optimize_los <- function(data, observed){
 }
 
 # check optimize function returns one single outcome for optimize function 
-outcome <- optimize_los(data = covid_incidH_data, observed = nj_TotalH_data)
+outcome <- optimize_los(los = 5, data = covid_incidH_data, observed = clean_observed(nj_TotalH_data))
 
 #abs_dif <- optimize_los(LOS = LOS, data = incidH_data, observed = covid_incidH_data)
 
-los_range <- c(1,15)
+los_range <- c(3,7)
 # tol (accuracy)  is the default value (approx. 0.0001)
-los_min <- optimize(optimize_los, los_range, data = covid_incidH_data, observed = nj_TotalH_data, 
-                    lower = min(los_range), upper = max(los_range), maximum = FALSE)
+los_min <- optimize(optimize_los, los_range, data = covid_incidH_data, observed = clean_observed(nj_TotalH_data), 
+                    maximum = FALSE)
+
+outcome <- optimize_los(los = 6.8, data = covid_incidH_data, observed = clean_observed(nj_TotalH_data))
+
+
+
+
+
 
 
 # Create a loop create unique df of incidH data for each state  ------------------------------------
