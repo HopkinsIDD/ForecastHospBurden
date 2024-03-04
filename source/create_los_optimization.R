@@ -162,12 +162,12 @@ los_min <- optimize(optimize_los, los_range, data = covid_incidH_data, observed 
                     lower = min(los_range), upper = max(los_range), maximum = FALSE)
 
 
-# Create a loop to run through the above for each state ------------------------------------
+# Create a loop create unique df of incidH data for each state  ------------------------------------
 
 # create list for each state 
 states_list <- unique(covid_incidH_data_states$state)
 
-# create a dataframe for each state 
+# create a dataframe of incidH data for each state 
 for (state in states_list) {
   
   state_data <- covid_incidH_data_states[covid_incidH_data_states$state == state, ]
@@ -176,3 +176,27 @@ for (state in states_list) {
   assign(paste0("covid_incidH_data_", state), state_data)
 }
 
+# Loop to get optimized value for each state ------------------------------------
+
+# create optimization for each state 
+for (state in states_list) {
+  
+  state_data <- get(paste0("covid_incidH_data_", state))
+  
+  # Run the optimization
+  los_range <- c(1, 15)
+  los_min <- optimize(optimize_los, los_range, data = state_data, observed = nj_TotalH_data,
+                      lower = min(los_range), upper = max(los_range), maximum = FALSE)
+  
+  print(los_min)
+}
+
+# Loop to get create total hosp df with optimized LOS  for each state ------------------------------------
+
+# create optimization for each state 
+for (state in states_list) {
+  
+  state_data <- get(paste0("covid_incidH_data_", state))
+
+  # insert code to go through optimization when know where to plug in value for lambda
+}
