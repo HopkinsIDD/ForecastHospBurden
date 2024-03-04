@@ -202,7 +202,7 @@ us_data_sample <- us_data_sample %>%
 
 
 # Save
-arrow::write_parquet(us_data_sample, "data/state_sample_covid_hosp.parquet")
+arrow::write_parquet(us_data_sample, "data/pull_empirical_incidH_state_data.parquet")
 
 
 
