@@ -25,7 +25,7 @@ opt$gt_data_path <- "data/nj_covid_hosp.parquet"
 
 opt$gt_covid_ensemble_data_path <- "data/ensemble_lop/2023-04-16-Ensemble_LOP-Inc_Hosp.parquet"
 opt$gt_flu_ensemble_data_path <- "data/2024-01-06-FluSight-ensemble.parquet"
-opt$gt_NJ_total_hosp_data_path <- "data/NJ_total_hosp.parquet"
+opt$gt_NJ_total_hosp_data_path <- "data/NJ_total_hosp.parquet" # update to new path file name from csv - parquet loop 
 
 
 source("source/pull_empirical_data.R")
