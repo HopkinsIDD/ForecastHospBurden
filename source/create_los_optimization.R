@@ -27,7 +27,7 @@ opt$gt_data_path <- "data/nj_covid_hosp.parquet"
 opt$gt_data_path_states <- "data/pull_empirical_incidH_state_data.parquet"
 
 incidH_data <- arrow::read_parquet(opt$gt_data_path)
-incidH_data_states <- arrow::read_parquet(opt$gt_data_path)
+incidH_data_states <- arrow::read_parquet(opt$gt_data_path_states)
 nj_TotalH_data <- arrow::read_parquet(opt$gt_NJ_total_hosp_data_path)
 
 # ~ COVID-19 --------------------------------------------------------------
@@ -35,6 +35,15 @@ nj_TotalH_data <- arrow::read_parquet(opt$gt_NJ_total_hosp_data_path)
 covid_incidH_data <- incidH_data %>%
   filter(pathogen == "COVID-19") %>%
   filter(!is.na(incidH) & incidH>0) # is there a reason we don't want to include 0's (just one day) 
+
+covid_incidH_data_states <- incidH_data_states %>%
+  filter(pathogen == "COVID-19") %>%
+  filter(!is.na(incidH) & incidH>0) # is there a reason we don't want to include 0's (just one day) 
+
+covid_incidH_data_states %>%
+  ggplot(aes(x = date, y = incidH, color = source)) + 
+  geom_line() 
+
 
 # BUILD SIMPLE EXAMPLE BURDEN ESTIMATOR -----------------------------------
 
@@ -149,6 +158,9 @@ los_range <- c(1,15)
 # tol (accuracy)  is the default value (approx. 0.0001)
 los_min <- optimize(optimize_los, los_range, data = covid_incidH_data, observed = nj_TotalH_data, 
                     lower = min(los_range), upper = max(los_range), maximum = FALSE)
+
+
+# Create a loop to run through the above for each state ------------------------------------
 
 
 
