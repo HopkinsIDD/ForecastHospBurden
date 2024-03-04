@@ -38,10 +38,11 @@ covid_incidH_data <- incidH_data %>%
 
 covid_incidH_data_states <- incidH_data_states %>%
   filter(pathogen == "COVID-19") %>%
-  filter(!is.na(incidH) & incidH>0) # is there a reason we don't want to include 0's (just one day) 
+  filter(!is.na(incidH) & incidH>0) %>% # is there a reason we don't want to include 0's (just one day) 
+  rename(state = source)
 
 covid_incidH_data_states %>%
-  ggplot(aes(x = date, y = incidH, color = source)) + 
+  ggplot(aes(x = date, y = incidH, color = state)) + 
   geom_line() 
 
 
@@ -109,7 +110,7 @@ clean_expected <- function(expected){
   return(expected)
 }
 
-## checking everything runs outside of function -------
+## checking everything runs outside of function ------- --------------
 
 # expected_list <- create_hosp_dates(data = covid_incidH_data)
 # expected_hosp <- create_curr_hosp(data_burden = expected_list)
@@ -123,6 +124,7 @@ clean_expected <- function(expected){
 #   filter(!is.na(absolute_difference)) %>% 
 #   summarize(sum_absolute_difference = sum(absolute_difference)) # mean or median instead here? 
 
+# Create function to be read into optimization ----------------------------
 optimize_los <- function(data, observed){
   
   # covidhosp_stay_funct <- function(n, LOS) {
@@ -162,5 +164,15 @@ los_min <- optimize(optimize_los, los_range, data = covid_incidH_data, observed 
 
 # Create a loop to run through the above for each state ------------------------------------
 
+# create list for each state 
+states_list <- unique(covid_incidH_data_states$state)
 
+# create a dataframe for each state 
+for (state in states_list) {
+  
+  state_data <- covid_incidH_data_states[covid_incidH_data_states$state == state, ]
+  
+  # Assign the data frame to an object named after the state
+  assign(paste0("covid_incidH_data_", state), state_data)
+}
 
