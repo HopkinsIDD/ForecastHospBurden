@@ -17,6 +17,7 @@ opt <- list()
 opt$gt_NJ_total_hosp_data_path <- "data/NJ_total_hosp.parquet"
 opt$gt_NJ_IH_empirical_data_path <- "data/hosp_burden/NJ_covid_empirical_weekly_data_burden.parquet"
 opt$gt_NJ_IH_ensemble_data_path <- "data/hosp_burden/NJ_covid_ensemble_weekly_data_burden.parquet"
+opt$gt_IH_census <- "data/nj_covid_hosp.parquet"
 
 
 # LOAD DATA ---------------------------------------------------------------
@@ -24,9 +25,13 @@ opt$gt_NJ_IH_ensemble_data_path <- "data/hosp_burden/NJ_covid_ensemble_weekly_da
 # only need to run this if want to update data
 NJ_total_hosp <- arrow::read_parquet(opt$gt_NJ_total_hosp_data_path)
 
+NJ_IH_hosp <- arrow::read_parquet(opt$gt_IH_census)
+
 empirical_IH_NJ_total_hosp <- arrow::read_parquet(opt$gt_NJ_IH_empirical_data_path)
 
 ensemble_IH_NJ_total_hosp <- arrow::read_parquet(opt$gt_NJ_IH_ensemble_data_path)
+
+
 
 # CLEAN & REFORMAT DATA ---------------------------------------------------------------
 empirical_IH_NJ_total_hosp_weekly <- empirical_IH_NJ_total_hosp %>% 
@@ -38,6 +43,7 @@ empirical_IH_NJ_total_hosp_weekly <- empirical_IH_NJ_total_hosp %>%
   
 NJ_total_hosp_weekly <- NJ_total_hosp %>% 
   group_by(state, week = format(date - as.numeric(format(date, "%w")) + 1, "%Y-%m-%d")) %>%  # Group by week using format()
+  mutate(week = as.Date(week)) %>% 
   summarize(total_hosp = sum(total_hosp))  
 
 ensemble_IH_NJ_total_hosp_weekly <- ensemble_IH_NJ_total_hosp %>% 
@@ -187,3 +193,75 @@ avg_forecast <- empirical_forecast_weekly %>%
   group_by(los) %>%
   summarize(avg_total_hosp_forecast = mean(total_hosp_forecast, na.rm = TRUE))
 
+
+#### NEW SET OF DATA FOR LOS = 5 and LOS = 14 
+
+NJ_total_hosp_5 <- arrow::read_parquet("data/hosp_burden/NJ_covid_empirical_weekly_data_burden_LOS_5.parquet", as_data_frame = TRUE)
+NJ_total_hosp_14 <- arrow::read_parquet("data/hosp_burden/NJ_covid_empirical_weekly_data_burden_LOS_14.parquet", as_data_frame = TRUE)
+NJ_total_hosp_1 <- arrow::read_parquet("data/hosp_burden/NJ_covid_empirical_weekly_data_burden_LOS_1.parquet", as_data_frame = TRUE)
+
+# CLEAN AND MERGE DATASETS ---------------------------------------------------------------
+
+NJ_total_hosp_5 <- NJ_total_hosp_5 %>% 
+  mutate(los = 5)
+NJ_total_hosp_14 <- NJ_total_hosp_14 %>% 
+  mutate(los = 14)
+NJ_total_hosp_1 <- NJ_total_hosp_1 %>% 
+  mutate(los = 1)
+
+NJ_total_hosp_5_14 <- bind_rows(NJ_total_hosp_5, NJ_total_hosp_14, NJ_total_hosp_1)
+# empirical_forecast_weekly_5_14 <- inner_join(NJ_total_hosp_weekly, NJ_total_hosp_5_14, by = "week") %>% 
+#   select(state, week, pathogen, los, total_hosp, total_hosp_forecast)
+
+#make data weekly 
+NJ_total_hosp_5_14_weekly <- NJ_total_hosp_5_14 %>% 
+  rename(date = hosp_dates,
+         total_hosp_forecast = curr_hosp) %>% 
+  group_by(pathogen, los, week = format(date - as.numeric(format(date, "%w")) + 1, "%Y-%m-%d")) %>%  # Group by week
+  mutate(week = as.Date(week)) %>% 
+  summarize(total_hosp_forecast = sum(total_hosp_forecast)) %>% 
+  select(pathogen, week, los, total_hosp_forecast)
+
+NJ_total_hosp_5_14_weekly_2 <- NJ_total_hosp_5_14 %>% 
+  rename(date = hosp_dates,
+         total_hosp_forecast = curr_hosp) %>% 
+  group_by(pathogen, los, week = format(date - as.numeric(format(date, "%w")) + 1, "%Y-%m-%d")) %>%  # Group by week
+  mutate(week = as.Date(week)) %>% 
+  select(pathogen, week, los, total_hosp_forecast)
+
+# CREATE DATASETS ---------------------------------------------------------------
+#empirical_forecast <- inner_join(NJ_total_hosp, empirical_IH_NJ_total_hosp_weekly, by = "date") %>% 
+#  select(state, date, pathogen, los, total_hosp, total_hosp_forecast)
+
+empirical_forecast_weekly_5_14 <- inner_join(NJ_total_hosp_weekly, NJ_total_hosp_5_14_weekly_2, by = "week") %>% 
+  select(state, week, pathogen, los, total_hosp, total_hosp_forecast)
+
+
+# CREATE OUTCOME VARIABLE DATASETS ---------------------------------------------------------------
+
+empirical_forecast_weekly_5_14 <- empirical_forecast_weekly_5_14 %>% 
+  mutate(dif = total_hosp_forecast - total_hosp,
+         ratio = total_hosp_forecast/total_hosp)
+
+## data viz 
+empirical_forecast_weekly_5_14 %>%   
+  ggplot(aes(x = week, y = total_hosp_forecast)) +
+  geom_line(aes(color = as.factor(los))) +
+  geom_line(aes(y = total_hosp)) +
+  labs(x="Week", y="Total Hospitalizations", color = "LOS") + 
+  ggtitle("Obs vs Est Hosp Burden by Length of Stay")
+
+
+#### DATA VIZ FOR RIP 2.27
+
+NJ_total_hosp_weekly_los <- NJ_IH_hosp %>% 
+  group_by_all() %>%
+  mutate(`3` = incidH*3,
+         `5` = incidH*5,
+         `10` = incidH*10,
+         `14` = incidH*3,
+         ) %>% 
+  pivot_longer(cols = c(`3`, `5`, `10`, `14`),
+               names_to = "los", values_to = "total_hosp_est")
+         
+         
