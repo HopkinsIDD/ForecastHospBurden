@@ -39,13 +39,12 @@ states <- c("NJ", "NY", "PA", "MD")  # Add more states when needed
 
 read_totalHosp <- function(states, directory){
   for (state in states) {
-    # Construct the file path for the current state
+
     file_path <- paste0(directory, state, "_currently_hospitalized_covid19_patients.parquet")
     
-    # Read the parquet file
     state_data <- arrow::read_parquet(file_path)
     
-    # Assign the data frame to a variable with a dynamically generated name
+    # put new df in global env 
     assign(paste0("covid_totalHosp_data_", state), state_data, envir = .GlobalEnv)
   }
   
@@ -62,7 +61,7 @@ create_incidH_df <- function(state){
     
     state_data <- covid_incidH_data_states[covid_incidH_data_states$state == state, ]
     
-    # Assign the data frame to an object named after the state
+    # put new df in global env 
     assign(paste0("covid_incidH_data_", state), state_data, envir = .GlobalEnv)
   }
 }
@@ -166,6 +165,7 @@ clean_expected <- function(expected){
 #   summarize(sum_absolute_difference = sum(absolute_difference)) # mean or median instead here? 
 
 # Create function to be read into optimization ----------------------------
+
 optimize_los <- function(los, data, observed){
   
   # covidhosp_stay_funct <- function(n, LOS) {
@@ -222,12 +222,69 @@ for (state in states_list) {
   print(los_min)
 }
 
-# Loop to get create total hosp df with optimized LOS  for each state ------------------------------------
+# Create optimization for each state Loop to get create total hosp df with optimized LOS  for each state ------------------------------------
 
 # create optimization for each state 
-for (state in states_list) {
-  
-  state_data <- get(paste0("covid_incidH_data_", state))
 
-  # insert code to go through optimization when know where to plug in value for lambda
+create_optimization <- function(optimize_los){
+  states_list <- unique(covid_incidH_data_states$state)
+  los_opt_by_state <- list()
+  
+  for (state in states_list) {
+    data = get(paste0("covid_incidH_data_", state))
+    observed = get(paste0("covid_totalHosp_data_", state))
+    
+    
+    los_range <- c(3,7)
+    # tol (accuracy)  is the default value (approx. 0.0001)
+    los_min <- optimize(optimize_los, los_range, data = get(paste0("covid_incidH_data_", state)), 
+                        observed = clean_observed(get(paste0("covid_totalHosp_data_", state))), 
+                        maximum = FALSE)
+
+    state_df <- data.frame(state = state, 
+                           optimized_los = los_min$minimum, 
+                           objective = los_min$objective)
+    los_opt_by_state[[state]] <- state_df
+  }
+  
+  los_opt_by_state <- do.call(rbind, los_opt_by_state)
+  
+  assign("los_opt_by_state", los_opt_by_state, envir = .GlobalEnv)
+  
 }
+create_optimization(optimize_los)
+
+
+## Create final datasets for estimated burden with optimized LOS -----------------------------------
+# joined by estimate total Hosp and census total Hosp 
+# one df for all states 
+
+create_optimize_totalHosp_data <- function(los_opt_by_state = los_opt_by_state){
+  states_list <- unique(covid_incidH_data_states$state)
+  combined_list <- list()
+  
+  for (state in states_list) {
+    data = get(paste0("covid_incidH_data_", state))
+    observed = get(paste0("covid_totalHosp_data_", state))
+    
+    expected_list <- create_hosp_dates(data, los = los_opt_by_state[los_opt_by_state$state == state, "optimized_los"])
+    expected <- create_curr_hosp(data_burden = expected_list)
+    
+    observed <- clean_observed(observed)
+    expected <- clean_expected(expected)
+  
+  combined <- inner_join(observed, expected, by = "week") %>% 
+    dplyr::select(state, week, pathogen, total_hosp, total_hosp_forecast) %>% 
+    mutate(absolute_difference = abs(total_hosp - total_hosp_forecast),
+           difference = total_hosp - total_hosp_forecast)
+  
+  combined_list[[state]] <- combined
+  }
+  
+  combined_df <- do.call(rbind, combined_list)
+  
+  return(combined_df)
+  
+}
+
+covid_joined_totalHosp_state_data <- create_optimize_totalHosp_data(los_opt_by_state = los_opt_by_state)
