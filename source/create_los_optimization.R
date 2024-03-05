@@ -32,10 +32,9 @@ opt$gt_data_path_states <- "data/pull_empirical_incidH_state_data.parquet"
 incidH_data_states <- arrow::read_parquet(opt$gt_data_path_states)
 nj_TotalH_data <- arrow::read_parquet(opt$gt_NJ_total_hosp_data_path)
 
-# Total Hospitalization data   -----------------------------------
+# Read in Hospitalization data for each state -----------------------------------
 
 directory <- "data/currently_hosp_covid19_by_state_parquet/"
-
 states <- c("NJ", "NY", "PA", "MD")  # Add more states when needed 
 
 read_totalHosp <- function(states, directory){
@@ -53,6 +52,23 @@ read_totalHosp <- function(states, directory){
 }
 
 read_totalHosp(states, directory)
+
+# Create df of incidH data for each state  ------------------------------------
+
+create_incidH_df <- function(state){
+  states_list <- unique(covid_incidH_data_states$state)
+  
+  for (state in states_list) {
+    
+    state_data <- covid_incidH_data_states[covid_incidH_data_states$state == state, ]
+    
+    # Assign the data frame to an object named after the state
+    assign(paste0("covid_incidH_data_", state), state_data, envir = .GlobalEnv)
+  }
+}
+
+create_incidH_df(state)
+
 
 # ~ COVID-19 --------------------------------------------------------------
 
@@ -189,25 +205,6 @@ los_min <- optimize(optimize_los, los_range, data = covid_incidH_data, observed 
 
 #outcome <- optimize_los(los = 6.8, data = covid_incidH_data, observed = clean_observed(nj_TotalH_data))
 
-
-
-
-# 
-
-
-# Create a loop create unique df of incidH data for each state  ------------------------------------
-
-# create list for each state 
-states_list <- unique(covid_incidH_data_states$state)
-
-# create a dataframe of incidH data for each state 
-for (state in states_list) {
-  
-  state_data <- covid_incidH_data_states[covid_incidH_data_states$state == state, ]
-  
-  # Assign the data frame to an object named after the state
-  assign(paste0("covid_incidH_data_", state), state_data)
-}
 
 # Loop to get optimized value for each state ------------------------------------
 
