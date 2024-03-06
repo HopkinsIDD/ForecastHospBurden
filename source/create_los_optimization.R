@@ -235,7 +235,7 @@ create_optimization <- function(optimize_los){
     observed = get(paste0("covid_totalHosp_data_", state))
     
     
-    los_range <- c(3,7)
+    los_range <- c(3,15)
     # tol (accuracy)  is the default value (approx. 0.0001)
     los_min <- optimize(optimize_los, los_range, data = get(paste0("covid_incidH_data_", state)), 
                         observed = clean_observed(get(paste0("covid_totalHosp_data_", state))), 
@@ -288,3 +288,5 @@ create_optimize_totalHosp_data <- function(los_opt_by_state = los_opt_by_state){
 }
 
 covid_joined_totalHosp_state_data <- create_optimize_totalHosp_data(los_opt_by_state = los_opt_by_state)
+
+write_parquet(covid_joined_totalHosp_state_data, "data/final_data_optimized_weekly/dif_Obs_Exp_totalHosp_weekly_v1.parquet")
