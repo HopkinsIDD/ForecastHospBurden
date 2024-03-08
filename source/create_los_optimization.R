@@ -21,36 +21,65 @@ source("source/data_setup_source.R")
 opt <- list()
 opt$gt_data_source <- "hhs_hosp"
 opt$delphi_api_key <- "04e7369e1541a"
-opt$gt_NJ_total_hosp_data_path <- "data/currently_hosp_covid19_by_state_parquet/NJ_currently_hospitalized_covid19_patients.parquet" #updated file name to new parquet folder
+#opt$gt_NJ_total_hosp_data_path <- "data/currently_hosp_covid19_by_state_parquet/NJ_currently_hospitalized_covid19_patients.parquet" #updated file name to new parquet folder
 
 # Incidence Data  -----------------------------------
 # only need to run this if want to update data
 #opt$gt_data_path <- "data/nj_covid_hosp.parquet" #running for multiple states going fwd 
-opt$gt_data_path_states <- "data/pull_empirical_incidH_state_data.parquet"
+opt$gt_data_path_incidH_states <- "data/pull_empirical_incidH_state_data.parquet"
+opt$gt_data_path_totalH_states <- "data/currently_hosp_covid_data_daily/COVID-19_Reported_Patient_Impact_and_Hospital_Capacity_by_State_Timeseries_Subset.parquet"
 
 #incidH_data <- arrow::read_parquet(opt$gt_data_path) #running for multiple states going fwd 
-incidH_data_states <- arrow::read_parquet(opt$gt_data_path_states)
-nj_TotalH_data <- arrow::read_parquet(opt$gt_NJ_total_hosp_data_path)
+covid_incidH_data_states <- arrow::read_parquet(opt$gt_data_path_incidH_states) %>%   
+  filter(pathogen == "COVID-19") %>%
+  filter(!is.na(incidH)) %>% 
+  #filter(!is.na(incidH) & incidH>0) %>% # is there a reason we don't want to include 0's (just one day) 
+  rename(state = source) %>% 
+  dplyr::select(pathogen, state, date, incidH)
+  
+
+
+covid_totalH_data_states <- arrow::read_parquet(opt$gt_data_path_totalH_states) %>% 
+  filter(!is.na(inpatient_beds_used_covid)) %>% 
+  dplyr::select(state, date, inpatient_beds_used_covid) %>% 
+  rename(total_hosp = inpatient_beds_used_covid)
+
+#nj_TotalH_data <- arrow::read_parquet(opt$gt_NJ_total_hosp_data_path) 
 
 # Read in Hospitalization data for each state -----------------------------------
 
-directory <- "data/currently_hosp_covid19_by_state_parquet/"
-states <- c("NJ", "NY", "PA", "MD")  # Add more states when needed 
-
-read_totalHosp <- function(states, directory){
-  for (state in states) {
-
-    file_path <- paste0(directory, state, "_currently_hospitalized_covid19_patients.parquet")
+create_totalH_df <- function(state){
+  states_list <- unique(covid_totalH_data_states$state)
+  
+  for (state in states_list) {
     
-    state_data <- arrow::read_parquet(file_path)
+    state_data <- covid_totalH_data_states[covid_totalH_data_states$state == state, ]
     
     # put new df in global env 
     assign(paste0("covid_totalHosp_data_", state), state_data, envir = .GlobalEnv)
   }
-  
 }
 
-read_totalHosp(states, directory)
+create_totalH_df(state)
+
+# archive weekly data import 
+# directory <- "data/currently_hosp_covid19_by_state_parquet/"
+# states <- c("NJ", "NY", "PA", "MD")  # Add more states when needed 
+# 
+# read_totalHosp <- function(states, directory){
+#   for (state in states) {
+# 
+#     file_path <- paste0(directory, state, "_currently_hospitalized_covid19_patients.parquet")
+#     
+#     state_data <- arrow::read_parquet(file_path)
+#     
+#     # put new df in global env 
+#     assign(paste0("covid_totalHosp_data_", state), state_data, envir = .GlobalEnv)
+#   }
+#   
+# }
+# 
+# read_totalHosp(states, directory)
 
 # Create df of incidH data for each state  ------------------------------------
 
@@ -74,16 +103,19 @@ create_incidH_df(state)
 # covid_incidH_data <- incidH_data %>%
 #   filter(pathogen == "COVID-19") %>%
 #   filter(!is.na(incidH) & incidH>0) # is there a reason we don't want to include 0's (just one day) 
-
-covid_incidH_data_states <- incidH_data_states %>%
-  filter(pathogen == "COVID-19") %>%
-  filter(!is.na(incidH) & incidH>0) %>% # is there a reason we don't want to include 0's (just one day) 
-  rename(state = source)
+# 
+# covid_incidH_data_states <- incidH_data_states %>%
+#   filter(pathogen == "COVID-19") %>%
+#   filter(!is.na(incidH) & incidH>0) %>% # is there a reason we don't want to include 0's (just one day) 
+#   rename(state = source)
 
 covid_incidH_data_states %>%
   ggplot(aes(x = date, y = incidH, color = state)) + 
   geom_line() 
 
+covid_totalH_data_states %>%
+  ggplot(aes(x = date, y = total_hosp, color = state)) + 
+  geom_line() 
 
 # BUILD SIMPLE EXAMPLE BURDEN ESTIMATOR -----------------------------------
 
@@ -127,28 +159,39 @@ create_curr_hosp <- function(data_burden){
   return(new_data_burden)
 }
 
-# CLEAN DATA FOR MERGE ----------------------------------- 
-clean_observed <- function(observed){
-  observed <- observed %>% 
-    group_by(state, week = format(date - as.numeric(format(date, "%w")) + 1, "%Y-%m-%d")) %>%  # Group by week using format()
-    mutate(week = as.Date(week)) %>% 
-    summarize(total_hosp = sum(total_hosp)) %>% 
-  
-  return(observed)
-
-}
-
+# CLEAN DATA FOR MERGE (WEEKLY ARCHIVE) ----------------------------------- 
 
 clean_expected <- function(expected){
-  expected <- expected %>% 
+  expected <- expected %>%
     rename(date = hosp_dates,
-           total_hosp_forecast = curr_hosp) %>% 
-    group_by(pathogen, week = format(date - as.numeric(format(date, "%w")) + 1, "%Y-%m-%d")) %>%  # rm los from group_by
-    mutate(week = as.Date(week)) %>% 
-    select(pathogen, week, total_hosp_forecast) # may need to keep state here when adding in more states 
-  
+           total_hosp_estimate = curr_hosp) %>%
+    select(pathogen, date, total_hosp_estimate) 
+
   return(expected)
 }
+
+# CLEAN DATA FOR MERGE (WEEKLY ARCHIVE) ----------------------------------- 
+# clean_observed <- function(observed){
+#   observed <- observed %>% 
+#     group_by(state, week = format(date - as.numeric(format(date, "%w")) + 1, "%Y-%m-%d")) %>%  # Group by week using format()
+#     mutate(week = as.Date(week)) %>% 
+#     summarize(total_hosp = sum(total_hosp)) %>% 
+#   
+#   return(observed)
+# 
+# }
+
+# 
+# clean_expected <- function(expected){
+#   expected <- expected %>% 
+#     rename(date = hosp_dates,
+#            total_hosp_estimate = curr_hosp) %>% 
+#     group_by(pathogen, week = format(date - as.numeric(format(date, "%w")) + 1, "%Y-%m-%d")) %>%  # rm los from group_by
+#     mutate(week = as.Date(week)) %>% 
+#     select(pathogen, week, total_hosp_estimate) # may need to keep state here when adding in more states 
+#   
+#   return(expected)
+# }
 
 ## checking everything runs outside of function ------- --------------
 
@@ -159,8 +202,8 @@ clean_expected <- function(expected){
 # expected <- clean_expected(expected = expected_hosp)
 # 
 # combined <- inner_join(observed, expected, by = "week") %>% 
-#   select(state, week, pathogen, total_hosp, total_hosp_forecast) %>% 
-#   mutate(absolute_difference = abs(total_hosp - total_hosp_forecast)) %>% 
+#   select(state, week, pathogen, total_hosp, total_hosp_estimate) %>% 
+#   mutate(absolute_difference = abs(total_hosp - total_hosp_estimate)) %>% 
 #   filter(!is.na(absolute_difference)) %>% 
 #   summarize(sum_absolute_difference = sum(absolute_difference)) # mean or median instead here? 
 
@@ -182,9 +225,9 @@ optimize_los <- function(los, data, observed){
   # observed <- clean_observed(observed)
   expected <- clean_expected(expected)
   
-  combined <- inner_join(observed, expected, by = "week") %>% 
-    dplyr::select(state, week, pathogen, total_hosp, total_hosp_forecast) %>% 
-    mutate(absolute_difference = abs(total_hosp - total_hosp_forecast)) %>% 
+  combined <- inner_join(observed, expected, by = "date") %>% 
+    dplyr::select(state, date, pathogen, total_hosp, total_hosp_estimate) %>% 
+    mutate(absolute_difference = abs(total_hosp - total_hosp_estimate)) %>% 
     filter(!is.na(absolute_difference)) %>% 
     summarize(sum_absolute_difference = sum(absolute_difference)) # mean or median instead here? 
     
@@ -200,7 +243,7 @@ optimize_los <- function(los, data, observed){
 
 los_range <- c(3,7)
 # tol (accuracy)  is the default value (approx. 0.0001)
-los_min <- optimize(optimize_los, los_range, data = covid_incidH_data, observed = clean_observed(nj_TotalH_data), 
+los_min <- optimize(optimize_los, los_range, data = covid_incidH_data_NJ, observed = covid_totalHosp_data_NJ, 
                     maximum = FALSE)
 
 #outcome <- optimize_los(los = 6.8, data = covid_incidH_data, observed = clean_observed(nj_TotalH_data))
@@ -216,7 +259,7 @@ for (state in states_list) {
   # Run the optimization
   los_range <- c(3,7)
   # tol (accuracy)  is the default value (approx. 0.0001)
-  los_min <- optimize(optimize_los, los_range, data = state_data, observed = clean_observed(total_hosp_data), 
+  los_min <- optimize(optimize_los, los_range, data = state_data, observed = total_hosp_data, 
                       maximum = FALSE)
   
   print(los_min)
@@ -238,7 +281,7 @@ create_optimization <- function(optimize_los){
     los_range <- c(3,15)
     # tol (accuracy)  is the default value (approx. 0.0001)
     los_min <- optimize(optimize_los, los_range, data = get(paste0("covid_incidH_data_", state)), 
-                        observed = clean_observed(get(paste0("covid_totalHosp_data_", state))), 
+                        observed = get(paste0("covid_totalHosp_data_", state)), 
                         maximum = FALSE)
 
     state_df <- data.frame(state = state, 
@@ -270,13 +313,13 @@ create_optimize_totalHosp_data <- function(los_opt_by_state = los_opt_by_state){
     expected_list <- create_hosp_dates(data, los = los_opt_by_state[los_opt_by_state$state == state, "optimized_los"])
     expected <- create_curr_hosp(data_burden = expected_list)
     
-    observed <- clean_observed(observed)
+    #observed <- clean_observed(observed)
     expected <- clean_expected(expected)
   
-  combined <- inner_join(observed, expected, by = "week") %>% 
-    dplyr::select(state, week, pathogen, total_hosp, total_hosp_forecast) %>% 
-    mutate(absolute_difference = abs(total_hosp - total_hosp_forecast),
-           difference = total_hosp - total_hosp_forecast)
+  combined <- inner_join(observed, expected, by = "date") %>% 
+    dplyr::select(state, date, pathogen, total_hosp, total_hosp_estimate) %>% 
+    mutate(absolute_difference = abs(total_hosp - total_hosp_estimate),
+           difference = total_hosp - total_hosp_estimate)
   
   combined_list[[state]] <- combined
   }
@@ -289,4 +332,4 @@ create_optimize_totalHosp_data <- function(los_opt_by_state = los_opt_by_state){
 
 covid_joined_totalHosp_state_data <- create_optimize_totalHosp_data(los_opt_by_state = los_opt_by_state)
 
-write_parquet(covid_joined_totalHosp_state_data, "data/final_data_optimized_weekly/dif_Obs_Exp_totalHosp_weekly_v1.parquet")
+write_parquet(covid_joined_totalHosp_state_data, "data/optimized_totalHosp_daily/Obs_Exp_totalHosp_daily.parquet")
