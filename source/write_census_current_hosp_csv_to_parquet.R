@@ -82,12 +82,20 @@ state_sample_covid_totalHosp <- clean_covid_totalHosp %>%
 
 vis_miss(state_sample_covid_totalHosp)
 
+
 gg_miss_var(state_sample_covid_totalHosp, show_pct = TRUE)
+# missing incid / totalH data
 state_sample_covid_totalHosp %>% 
+  dplyr::select(
+    previous_day_admission_adult_covid_confirmed, previous_day_admission_adult_covid_suspected,
+    previous_day_admission_pediatric_covid_confirmed, previous_day_admission_pediatric_covid_suspected, inpatient_beds_used_covid, date) %>% 
   mutate(year = year(as.Date(date))) %>% 
   gg_miss_var(show_pct = TRUE, facet = year)
 
 state_sample_covid_totalHosp %>% 
+  dplyr::select(
+    previous_day_admission_adult_covid_confirmed, previous_day_admission_adult_covid_suspected,
+    previous_day_admission_pediatric_covid_confirmed, previous_day_admission_pediatric_covid_suspected, inpatient_beds_used_covid, date) %>% 
   mutate(year = year(as.Date(date))) %>% 
   filter(year %in% c(2020)) %>% 
   mutate(month = month(date)) %>% 
@@ -101,12 +109,29 @@ names(shadowed_state_sample_covid_totalHosp)
 
 # plot of missingness of previous day admissions age group 
 shadowed_state_sample_covid_totalHosp %>% 
+  mutate(year = year(as.Date(date))) %>% 
+  filter(year == 2020) %>% 
   ggplot(mapping = aes(x = date, # numeric or date column
-                     colour = `previous_day_admission_adult_covid_confirmed_40-49_NA`)) + # shadow column of interest
+                     colour = `previous_day_admission_adult_covid_confirmed_NA`)) + # shadow column of interest
   geom_density()                          # plots the density curves
 
 
 
+state_sample_covid_totalHosp_origin_Aug2020 <- state_sample_covid_totalHosp %>% 
+  filter(between(date, as.Date('2020-08-01'), Sys.Date()))
+
+state_sample_covid_totalHosp_origin_Aug2020 %>% 
+  dplyr::select(
+    previous_day_admission_adult_covid_confirmed, previous_day_admission_adult_covid_suspected,
+    previous_day_admission_pediatric_covid_confirmed, previous_day_admission_pediatric_covid_suspected, inpatient_beds_used_covid, date) %>% 
+  mutate(year = year(as.Date(date))) %>% 
+  gg_miss_var(show_pct = TRUE, facet = year)
+
+
+######### FINAL DATASET ORIGIN DATE
+
+state_sample_covid_totalHosp <- state_sample_covid_totalHosp %>% 
+  filter(between(date, as.Date('2020-08-01'), Sys.Date()))
 
 write_parquet(state_sample_covid_totalHosp, "data/currently_hosp_covid_data_daily/COVID-19_Reported_Patient_Impact_and_Hospital_Capacity_by_State_Timeseries_Subset.parquet")
 # Check total COVID hospitalizations 
