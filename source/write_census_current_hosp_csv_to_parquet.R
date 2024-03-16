@@ -3,6 +3,8 @@ library(arrow)
 library(gtable)
 library(grid)
 library(gridExtra)
+library(naniar)
+
 
 # # create state_files list for loop 
 # # Updated state_files list with specified path structure
@@ -35,14 +37,76 @@ raw_covid_totalHosp <- read_csv("data/currently_hosp_covid_data_daily/COVID-19_R
 clean_covid_totalHosp <- raw_covid_totalHosp %>% 
   dplyr::select(state, date, inpatient_beds, inpatient_beds_coverage, inpatient_beds_used, inpatient_beds_used_coverage,
                 inpatient_beds_used_covid, inpatient_beds_used_covid_coverage, 
+                #total hosp data 
                 total_adult_patients_hospitalized_confirmed_and_suspected_covid, total_adult_patients_hospitalized_confirmed_and_suspected_covid_coverage,
                 total_adult_patients_hospitalized_confirmed_covid, total_adult_patients_hospitalized_confirmed_covid_coverage,
                 total_pediatric_patients_hospitalized_confirmed_and_suspected_covid, total_pediatric_patients_hospitalized_confirmed_and_suspected_covid_coverage,
-                total_pediatric_patients_hospitalized_confirmed_covid, total_pediatric_patients_hospitalized_confirmed_covid_coverage)
+                total_pediatric_patients_hospitalized_confirmed_covid, total_pediatric_patients_hospitalized_confirmed_covid_coverage,
+                # incidH data
+                previous_day_admission_adult_covid_confirmed, previous_day_admission_adult_covid_suspected,
+                previous_day_admission_pediatric_covid_confirmed, previous_day_admission_pediatric_covid_suspected,
+                # incidH data by age 
+                `previous_day_admission_adult_covid_confirmed_18-19`, `previous_day_admission_adult_covid_confirmed_20-29`,
+                `previous_day_admission_adult_covid_confirmed_30-39`, `previous_day_admission_adult_covid_confirmed_40-49`,
+                `previous_day_admission_adult_covid_confirmed_50-59`, `previous_day_admission_adult_covid_confirmed_60-69`,
+                `previous_day_admission_adult_covid_confirmed_70-79`, `previous_day_admission_adult_covid_confirmed_80+`, 
+                previous_day_admission_adult_covid_confirmed_unknown,
+                previous_day_admission_pediatric_covid_confirmed_0_4, previous_day_admission_pediatric_covid_confirmed_12_17,
+                previous_day_admission_pediatric_covid_confirmed_5_11, previous_day_admission_pediatric_covid_confirmed_unknown,
+                `previous_day_admission_adult_covid_suspected_18-19`, `previous_day_admission_adult_covid_suspected_20-29`,
+                `previous_day_admission_adult_covid_suspected_30-39`, `previous_day_admission_adult_covid_suspected_40-49`,
+                `previous_day_admission_adult_covid_suspected_50-59`, `previous_day_admission_adult_covid_suspected_60-69`,
+                `previous_day_admission_adult_covid_suspected_70-79`, `previous_day_admission_adult_covid_suspected_80+`, 
+                previous_day_admission_adult_covid_suspected_unknown, previous_day_admission_pediatric_covid_suspected,
+                # incidH data by age coverage 
+                previous_day_admission_adult_covid_confirmed_coverage, previous_day_admission_adult_covid_suspected_coverage,
+                previous_day_admission_pediatric_covid_confirmed_coverage, previous_day_admission_pediatric_covid_suspected_coverage,
+                `previous_day_admission_adult_covid_confirmed_18-19_coverage`, `previous_day_admission_adult_covid_confirmed_20-29_coverage`,
+                `previous_day_admission_adult_covid_confirmed_30-39_coverage`, `previous_day_admission_adult_covid_confirmed_40-49_coverage`,
+                `previous_day_admission_adult_covid_confirmed_50-59_coverage`, `previous_day_admission_adult_covid_confirmed_60-69_coverage`,
+                `previous_day_admission_adult_covid_confirmed_70-79_coverage`, `previous_day_admission_adult_covid_confirmed_80+_coverage`, 
+                previous_day_admission_adult_covid_confirmed_unknown_coverage,
+                previous_day_admission_pediatric_covid_confirmed_0_4_coverage, previous_day_admission_pediatric_covid_confirmed_12_17_coverage,
+                previous_day_admission_pediatric_covid_confirmed_5_11_coverage, previous_day_admission_pediatric_covid_confirmed_unknown_coverage,
+                `previous_day_admission_adult_covid_suspected_18-19_coverage`, `previous_day_admission_adult_covid_suspected_20-29_coverage`,
+                `previous_day_admission_adult_covid_suspected_30-39_coverage`, `previous_day_admission_adult_covid_suspected_40-49_coverage`,
+                `previous_day_admission_adult_covid_suspected_50-59_coverage`, `previous_day_admission_adult_covid_suspected_60-69_coverage`,
+                `previous_day_admission_adult_covid_suspected_70-79_coverage`, `previous_day_admission_adult_covid_suspected_80+_coverage`, 
+                previous_day_admission_adult_covid_suspected_unknown_coverage, previous_day_admission_pediatric_covid_suspected_coverage)
 
 
 state_sample_covid_totalHosp <- clean_covid_totalHosp %>% 
-  filter(state %in% c("NJ", "MD", "PA", "NY")) 
+  filter(state %in% c("NJ", "MD", "PA", "NY"))
+
+# missing data
+
+vis_miss(state_sample_covid_totalHosp)
+
+gg_miss_var(state_sample_covid_totalHosp, show_pct = TRUE)
+state_sample_covid_totalHosp %>% 
+  mutate(year = year(as.Date(date))) %>% 
+  gg_miss_var(show_pct = TRUE, facet = year)
+
+state_sample_covid_totalHosp %>% 
+  mutate(year = year(as.Date(date))) %>% 
+  filter(year %in% c(2020)) %>% 
+  mutate(month = month(date)) %>% 
+  gg_miss_var(show_pct = TRUE, facet = month)
+
+# create shadow cols of missing data 
+
+shadowed_state_sample_covid_totalHosp <- state_sample_covid_totalHosp %>% 
+  bind_shadow()
+names(shadowed_state_sample_covid_totalHosp)
+
+# plot of missingness of previous day admissions age group 
+shadowed_state_sample_covid_totalHosp %>% 
+  ggplot(mapping = aes(x = date, # numeric or date column
+                     colour = `previous_day_admission_adult_covid_confirmed_40-49_NA`)) + # shadow column of interest
+  geom_density()                          # plots the density curves
+
+
+
 
 write_parquet(state_sample_covid_totalHosp, "data/currently_hosp_covid_data_daily/COVID-19_Reported_Patient_Impact_and_Hospital_Capacity_by_State_Timeseries_Subset.parquet")
 # Check total COVID hospitalizations 
