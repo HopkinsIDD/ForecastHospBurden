@@ -1,12 +1,14 @@
 library(arrow)
 library(tidyverse)
 library(ggplot2)
+library(gtsummary)
+library(flextable)
 
 covid_joined_totalHosp_state_data <- arrow::read_parquet("data/optimized_totalHosp_daily/Obs_Exp_totalHosp_daily.parquet")
 
 covid_joined_totalHosp_state_data_analysis <- covid_joined_totalHosp_state_data %>% 
-  mutate(peak_average = ifelse(total_hosp > mean(total_hosp), 1, 0),
-         peak_median = ifelse(total_hosp > median(total_hosp), 1, 0),
+  mutate(peak_average = ifelse(total_hosp > mean(total_hosp), "Yes", "No"),
+         peak_median = ifelse(total_hosp > median(total_hosp), "Yes", "No"),
          year = year(as.Date(date)),
          log_absolute_difference = ifelse(absolute_difference <= 0, NA, log(absolute_difference + 0.001)),
          state_numeric = case_when(
@@ -22,7 +24,69 @@ covid_joined_totalHosp_state_data_analysis <- covid_joined_totalHosp_state_data 
          #,
          #variant = case_when())
 
+########################################################################################
 
+# Tables --------------------------
+
+# Overall distribution of variables 
+covid_joined_totalHosp_state_data_analysis %>% 
+  select(state, year, season, peak_average, totalHosp_split) %>%
+  tbl_summary(
+    statistic = list(all_categorical() ~ "{n}    ({p}%)"),
+    digits = list(all_categorical() ~ c(0, 1)),
+    type = list(state      ~ "categorical",
+                year ~ "categorical",
+                season ~ "categorical",
+                peak_average   ~ "categorical"),
+    label  = list(state      ~ "State",
+                 year ~ "Year",
+                 season ~ "Season",
+                 peak_average   ~ "Above Average",
+                 totalHosp_split   ~ "Dist of Hosp Estimates"),
+  ) %>%
+  modify_header(label = "**Variable**") %>%
+  modify_caption("Total Hospitalization Time Series Characteristics") %>%
+  bold_labels()
+
+ft <- as_flextable(tbl)
+
+# Save the flextable as an image
+flextable::save_as_image(ft, path = "summary_table_image.png")
+
+# Distribution of Variables by under / over estimating total hospitalizations 
+
+covid_joined_totalHosp_state_data_analysis <- covid_joined_totalHosp_state_data_analysis %>% 
+  mutate(totalHosp_split = case_when(
+    difference >  25 ~ "Overestimate",
+    difference >= -25 & difference <= 25 ~ "Estimate +/- 25 Hosp",
+    difference <  -25 ~ "Underestimate"))
+
+# Create table
+covid_joined_totalHosp_state_data_analysis %>% 
+  select(state, year, season, peak_average, totalHosp_split) %>%
+  tbl_summary(
+    by = totalHosp_split,
+    statistic = list(all_categorical() ~ "{n}    ({p}%)"),
+    digits = list(all_categorical() ~ c(0, 1)),
+    type = list(state      ~ "categorical",
+                year ~ "categorical",
+                season ~ "categorical",
+                peak_average   ~ "categorical"),
+    label  = list(state      ~ "State",
+                  year ~ "Year",
+                  season ~ "Season",
+                  peak_average   ~ "Above Average"),
+  ) %>%
+  modify_header(
+    label = "**Variable**",
+    all_stat_cols() ~ "**{level}**<br>N = {n} ({style_percent(p, digits=1)}%)"
+  ) %>%
+  modify_caption("Total Hospitalization Time Series Characteristics, by Hospitalization Estimate") %>%
+  bold_labels() %>% 
+  add_overall(last = FALSE,
+              col_label = "**Overall**<br>N = {N}")
+
+########################################################################################
 # Visualizations of hospitalizations
 
 covid_joined_totalHosp_state_data_analysis %>%   
@@ -74,6 +138,8 @@ covid_joined_totalHosp_state_data_analysis %>%
   facet_wrap(~state, ncol = 1) +
   ggtitle("Total Observed vs. Estimated Hospitalizations\nby State")
 
+########################################################################################
+
 # Exploratory Data Visualizations ----------------------------------------
 
 # STATE
@@ -93,7 +159,7 @@ covid_joined_totalHosp_state_data_analysis %>%
   labs(x = "State", y = "log_absolute_difference")
 
 # Seasonal Peak 
-
+# look at log dif w NY here 
 covid_joined_totalHosp_state_data_analysis %>% 
   ggplot(aes(x = as.factor(peak_average), y = difference)) +  
   geom_boxplot(aes(color = peak_average)) +  
@@ -123,6 +189,7 @@ covid_joined_totalHosp_state_data_analysis %>%
   geom_boxplot(aes(color = year)) +  
   labs(x = "Year", y = "log_absolute_difference")
 
+
 # Matrix Plot 
 
 pairs(~ year + peak_average + state_numeric + difference, data=covid_joined_totalHosp_state_data_analysis, upper.panel=NULL, pch=".")
@@ -133,6 +200,10 @@ summary(covid_joined_totalHosp_state_data_analysis$difference)
 
 summary(covid_joined_totalHosp_state_data_analysis$absolute_difference)
 summary(covid_joined_totalHosp_state_data_analysis$log_absolute_difference)
+
+
+########################################################################################
+########################################################################################
 
 # Difference SLR --------------------------
 
@@ -201,6 +272,7 @@ summary(model)
 model <- lm(log_absolute_difference ~ peak_average + as.factor(state)*as.factor(year)*season, data = covid_joined_totalHosp_state_data_analysis)
 summary(model)
 
+########################################################################################
 
 # EXCLUDE NY -----------------------------------------
 covid_joined_totalHosp_MD_NJ_PA <- covid_joined_totalHosp_state_data_analysis %>% 
