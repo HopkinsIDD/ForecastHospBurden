@@ -27,7 +27,7 @@ opt$delphi_api_key <- "04e7369e1541a"
 # only need to run this if want to update data
 #opt$gt_data_path <- "data/nj_covid_hosp.parquet" #running for multiple states going fwd 
 opt$gt_data_path_incidH_states <- "data/pull_empirical_incidH_state_data.parquet"
-opt$gt_data_path_totalH_states <- "data/currently_hosp_covid_data_daily/COVID-19_Reported_Patient_Impact_and_Hospital_Capacity_by_State_Timeseries_Subset.parquet"
+opt$gt_data_path_HHS_states <- "data/currently_hosp_covid_data_daily/COVID-19_Reported_Patient_Impact_and_Hospital_Capacity_by_State_Timeseries_Subset.parquet"
 
 #incidH_data <- arrow::read_parquet(opt$gt_data_path) #running for multiple states going fwd 
 covid_incidH_data_states <- arrow::read_parquet(opt$gt_data_path_incidH_states) %>%   
@@ -39,21 +39,37 @@ covid_incidH_data_states <- arrow::read_parquet(opt$gt_data_path_incidH_states) 
   
 
 
-covid_totalH_data_states <- arrow::read_parquet(opt$gt_data_path_totalH_states) %>% 
-  filter(!is.na(inpatient_beds_used_covid)) %>% 
-  dplyr::select(state, date, inpatient_beds_used_covid) %>% 
-  rename(total_hosp = inpatient_beds_used_covid)
+covid_HHS_data_states <- arrow::read_parquet(opt$gt_data_path_HHS_states) %>% 
+  mutate(total_hosp = inpatient_beds_used_covid,
+         incidH_confirmed_suspected = previous_day_admission_adult_covid_confirmed + previous_day_admission_adult_covid_suspected +
+           previous_day_admission_pediatric_covid_confirmed + previous_day_admission_pediatric_covid_suspected,
+         incidH_confirmed = previous_day_admission_adult_covid_confirmed + previous_day_admission_pediatric_covid_confirmed) %>% 
+  arrange(state, date) %>% 
+  mutate(incidH_confirmed_suspected_LAG = lag(incidH_confirmed_suspected),
+         incidH_confirmed_LAG = lag(incidH_confirmed)) %>% 
+  dplyr::select(state, date, total_hosp, incidH_confirmed_suspected, incidH_confirmed,
+                incidH_confirmed_suspected_LAG, incidH_confirmed_LAG)
 
+# LAG NOT WORKING 
+# create loop to lag by one day for each state and then put back together as one dataset 
 #nj_TotalH_data <- arrow::read_parquet(opt$gt_NJ_total_hosp_data_path) 
+
+####### COMPARE INCIDH DATA SOURCES -----------
+
+covid_incidH_data_states_AUG <- covid_incidH_data_states %>%
+  filter(between(date, as.Date('2020-08-01'), Sys.Date())) %>% 
+  rename(incidh_COVIDCast = incidH)
+
+incidH_compare <- inner_join(covid_HHS_data_states, covid_incidH_data_states_AUG, by = c("date" = "date", "state" = "state"))
 
 # Read in Hospitalization data for each state -----------------------------------
 
 create_totalH_df <- function(state){
-  states_list <- unique(covid_totalH_data_states$state)
+  states_list <- unique(covid_HHS_data_states$state)
   
   for (state in states_list) {
     
-    state_data <- covid_totalH_data_states[covid_totalH_data_states$state == state, ]
+    state_data <- covid_HHS_data_states[covid_HHS_data_states$state == state, ]
     
     # put new df in global env 
     assign(paste0("covid_totalHosp_data_", state), state_data, envir = .GlobalEnv)
@@ -113,7 +129,7 @@ covid_incidH_data_states %>%
   ggplot(aes(x = date, y = incidH, color = state)) + 
   geom_line() 
 
-covid_totalH_data_states %>%
+covid_HHS_data_states %>%
   ggplot(aes(x = date, y = total_hosp, color = state)) + 
   geom_line() 
 
