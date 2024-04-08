@@ -40,9 +40,7 @@ covid_incidH_data_states <- arrow::read_parquet(opt$gt_data_path_incidH_states) 
 
 
 covid_HHS_data_states <- arrow::read_parquet(opt$gt_data_path_HHS_states) %>% 
-  mutate(total_hosp = inpatient_beds_used_covid,
-         incidH_confirmed_suspected = previous_day_admission_adult_covid_confirmed + previous_day_admission_adult_covid_suspected +
-           previous_day_admission_pediatric_covid_confirmed + previous_day_admission_pediatric_covid_suspected,
+  mutate(total_hosp = total_adult_patients_hospitalized_confirmed_covid + total_pediatric_patients_hospitalized_confirmed_covid,
          incidH_confirmed = previous_day_admission_adult_covid_confirmed + previous_day_admission_pediatric_covid_confirmed) %>% 
   arrange(state, date) %>% 
   mutate(incidH_confirmed_suspected_LAG = lag(incidH_confirmed_suspected),
@@ -60,8 +58,10 @@ covid_incidH_data_states_AUG <- covid_incidH_data_states %>%
   filter(between(date, as.Date('2020-08-01'), Sys.Date())) %>% 
   rename(incidh_COVIDCast = incidH)
 
-incidH_compare <- inner_join(covid_HHS_data_states, covid_incidH_data_states_AUG, by = c("date" = "date", "state" = "state"))
-
+incidH_compare <- inner_join(covid_HHS_data_states, covid_incidH_data_states_AUG, by = c("date" = "date", "state" = "state")) 
+  
+incidH_compare_subset <- incidH_compare %>% 
+  select(state, date, total_hosp, incidH_confirmed_suspected, incidH_confirmed, incidh_COVIDCast, incidH_confirmed_LAG)
 # Read in Hospitalization data for each state -----------------------------------
 
 create_totalH_df <- function(state){
