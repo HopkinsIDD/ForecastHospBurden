@@ -41,27 +41,58 @@ covid_incidH_data_states <- arrow::read_parquet(opt$gt_data_path_incidH_states) 
 
 covid_HHS_data_states <- arrow::read_parquet(opt$gt_data_path_HHS_states) %>% 
   mutate(total_hosp = total_adult_patients_hospitalized_confirmed_covid + total_pediatric_patients_hospitalized_confirmed_covid,
-         incidH_confirmed = previous_day_admission_adult_covid_confirmed + previous_day_admission_pediatric_covid_confirmed) %>% 
+         incidH= previous_day_admission_adult_covid_confirmed + previous_day_admission_pediatric_covid_confirmed) %>% 
   arrange(state, date) %>% 
-  mutate(incidH_confirmed_suspected_LAG = lag(incidH_confirmed_suspected),
-         incidH_confirmed_LAG = lag(incidH_confirmed)) %>% 
-  dplyr::select(state, date, total_hosp, incidH_confirmed_suspected, incidH_confirmed,
-                incidH_confirmed_suspected_LAG, incidH_confirmed_LAG)
+  mutate(incidH_lead = lead(incidH),
+         incidH_lag = lag(incidH)) %>% 
+  dplyr::select(state, date, total_hosp, incidH, incidH_lead, incidH_lag)
 
-# LAG NOT WORKING 
-# create loop to lag by one day for each state and then put back together as one dataset 
-#nj_TotalH_data <- arrow::read_parquet(opt$gt_NJ_total_hosp_data_path) 
 
-####### COMPARE INCIDH DATA SOURCES -----------
+# Create lag of one day for incidH for each state ------- 
+
+create_incidH_lag <- function(state_data){
+  states_list <- unique(state_data$state)
+  lagged_dfs <- list()
+  
+  for (state in states_list) {
+    state_data_state <- state_data[state_data$state == state, ]
+    state_data_state <- state_data_state %>% 
+      mutate(incidH = lead(incidH))
+    
+    lagged_dfs[[state]] <- state_data_state #store lags in a list 
+  }
+  
+  merged_df <- do.call(bind_rows, lagged_dfs) #combine into one df 
+  
+  return(merged_df)
+}
+
+# update covid_HHS_data_states so incidH has lagged values
+covid_HHS_data_states <- create_incidH_lag(covid_HHS_data_states)
+
+####### Check incidH lag -----------
 
 covid_incidH_data_states_AUG <- covid_incidH_data_states %>%
   filter(between(date, as.Date('2020-08-01'), Sys.Date())) %>% 
   rename(incidh_COVIDCast = incidH)
 
 incidH_compare <- inner_join(covid_HHS_data_states, covid_incidH_data_states_AUG, by = c("date" = "date", "state" = "state")) 
-  
-incidH_compare_subset <- incidH_compare %>% 
-  select(state, date, total_hosp, incidH_confirmed_suspected, incidH_confirmed, incidh_COVIDCast, incidH_confirmed_LAG)
+
+incidH_compare_summary <- incidH_compare %>% 
+  select(state, date, total_hosp, incidH, incidh_COVIDCast) %>% 
+  mutate(incidH_compare = incidH == incidh_COVIDCast) %>%
+  group_by(incidH_compare) %>%
+  summarize(count = n())
+
+print(incidH_compare_summary)
+
+incidH_compare_FALSE <- incidH_compare %>% 
+  select(state, date, total_hosp, incidH, incidh_COVIDCast) %>% 
+  mutate(incidH_compare = incidH == incidh_COVIDCast) %>%
+  filter(incidH_compare == FALSE)
+
+print(incidH_compare_FALSE)
+
 # Read in Hospitalization data for each state -----------------------------------
 
 create_totalH_df <- function(state){
