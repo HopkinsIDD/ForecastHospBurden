@@ -41,7 +41,8 @@ covid_incidH_data_states <- arrow::read_parquet(opt$gt_data_path_incidH_states) 
 
 covid_HHS_data_states <- arrow::read_parquet(opt$gt_data_path_HHS_states) %>% 
   mutate(total_hosp = total_adult_patients_hospitalized_confirmed_covid + total_pediatric_patients_hospitalized_confirmed_covid,
-         incidH= previous_day_admission_adult_covid_confirmed + previous_day_admission_pediatric_covid_confirmed) %>% 
+         incidH= previous_day_admission_adult_covid_confirmed + previous_day_admission_pediatric_covid_confirmed,
+         date = as_date(date)) %>% 
   arrange(state, date) %>% 
   mutate(incidH_lead = lead(incidH),
          incidH_lag = lag(incidH)) %>% 
@@ -57,7 +58,9 @@ create_incidH_lag <- function(state_data){
   for (state in states_list) {
     state_data_state <- state_data[state_data$state == state, ]
     state_data_state <- state_data_state %>% 
-      mutate(incidH = lead(incidH))
+      mutate(incidH = lead(incidH)) %>%  # incidH prior day (t) = incidH prior day (t+1) 
+      filter(date < (state_data_state %>% summarize(max_date = max(date)) %>% pull(max_date))) # remove most recent date to account for lag 
+
     
     lagged_dfs[[state]] <- state_data_state #store lags in a list 
   }
@@ -68,7 +71,8 @@ create_incidH_lag <- function(state_data){
 }
 
 # update covid_HHS_data_states so incidH has lagged values
-covid_HHS_data_states <- create_incidH_lag(covid_HHS_data_states)
+covid_HHS_data_states_lag <- create_incidH_lag(covid_HHS_data_states) %>% 
+  dplyr::select(-incidH_lead, -incidH_lag)
 
 ####### Check incidH lag -----------
 
@@ -76,7 +80,7 @@ covid_incidH_data_states_AUG <- covid_incidH_data_states %>%
   filter(between(date, as.Date('2020-08-01'), Sys.Date())) %>% 
   rename(incidh_COVIDCast = incidH)
 
-incidH_compare <- inner_join(covid_HHS_data_states, covid_incidH_data_states_AUG, by = c("date" = "date", "state" = "state")) 
+incidH_compare <- inner_join(covid_HHS_data_states_lag, covid_incidH_data_states_AUG, by = c("date" = "date", "state" = "state")) 
 
 incidH_compare_summary <- incidH_compare %>% 
   select(state, date, total_hosp, incidH, incidh_COVIDCast) %>% 
@@ -95,19 +99,19 @@ print(incidH_compare_FALSE)
 
 # Read in Hospitalization data for each state -----------------------------------
 
-create_totalH_df <- function(state){
-  states_list <- unique(covid_HHS_data_states$state)
+create_totalH_df <- function(data, state){
+  states_list <- unique(data$state)
   
   for (state in states_list) {
     
-    state_data <- covid_HHS_data_states[covid_HHS_data_states$state == state, ]
+    state_data <- data[data$state == state, ]
     
     # put new df in global env 
     assign(paste0("covid_totalHosp_data_", state), state_data, envir = .GlobalEnv)
   }
 }
 
-create_totalH_df(state)
+create_totalH_df(data = covid_HHS_data_states_lag, state)
 
 # archive weekly data import 
 # directory <- "data/currently_hosp_covid19_by_state_parquet/"
@@ -130,19 +134,19 @@ create_totalH_df(state)
 
 # Create df of incidH data for each state  ------------------------------------
 
-create_incidH_df <- function(state){
-  states_list <- unique(covid_incidH_data_states$state)
+create_incidH_df <- function(data, state){
+  states_list <- unique(data$state)
   
   for (state in states_list) {
     
-    state_data <- covid_incidH_data_states[covid_incidH_data_states$state == state, ]
+    state_data <- data[data$state == state, ]
     
     # put new df in global env 
     assign(paste0("covid_incidH_data_", state), state_data, envir = .GlobalEnv)
   }
 }
 
-create_incidH_df(state)
+create_incidH_df(data = covid_HHS_data_states_lag %>% dplyr::select(-total_hosp), state)
 
 
 # ~ COVID-19 --------------------------------------------------------------
@@ -156,11 +160,19 @@ create_incidH_df(state)
 #   filter(!is.na(incidH) & incidH>0) %>% # is there a reason we don't want to include 0's (just one day) 
 #   rename(state = source)
 
-covid_incidH_data_states %>%
+covid_HHS_data_states_lag %>%
   ggplot(aes(x = date, y = incidH, color = state)) + 
   geom_line() 
 
-covid_HHS_data_states %>%
+covid_HHS_data_states_lag %>%
+  ggplot(aes(x = date, y = total_hosp, color = state)) + 
+  geom_line() 
+
+covid_incidH_data_MD %>%
+  ggplot(aes(x = date, y = incidH, color = state)) + 
+  geom_line() 
+
+covid_totalHosp_data_MD %>%
   ggplot(aes(x = date, y = total_hosp, color = state)) + 
   geom_line() 
 
@@ -210,9 +222,9 @@ create_curr_hosp <- function(data_burden){
 
 clean_expected <- function(expected){
   expected <- expected %>%
-    rename(date = hosp_dates,
-           total_hosp_estimate = curr_hosp) %>%
-    select(pathogen, date, total_hosp_estimate) 
+    rename(total_hosp_estimate = curr_hosp,
+           date = hosp_dates) %>%
+    select(date, total_hosp_estimate) 
 
   return(expected)
 }
@@ -256,6 +268,7 @@ clean_expected <- function(expected){
 
 # Create function to be read into optimization ----------------------------
 
+
 optimize_los <- function(los, data, observed){
   
   # covidhosp_stay_funct <- function(n, LOS) {
@@ -273,7 +286,7 @@ optimize_los <- function(los, data, observed){
   expected <- clean_expected(expected)
   
   combined <- inner_join(observed, expected, by = "date") %>% 
-    dplyr::select(state, date, pathogen, total_hosp, total_hosp_estimate) %>% 
+    dplyr::select(state, date, total_hosp, total_hosp_estimate) %>% 
     mutate(absolute_difference = abs(total_hosp - total_hosp_estimate)) %>% 
     filter(!is.na(absolute_difference)) %>% 
     summarize(sum_absolute_difference = sum(absolute_difference)) # mean or median instead here? 
@@ -288,10 +301,10 @@ optimize_los <- function(los, data, observed){
 
 #abs_dif <- optimize_los(LOS = LOS, data = incidH_data, observed = covid_incidH_data)
 
-los_range <- c(3,7)
+## los_range <- c(3,7)
 # tol (accuracy)  is the default value (approx. 0.0001)
-los_min <- optimize(optimize_los, los_range, data = covid_incidH_data_NJ, observed = covid_totalHosp_data_NJ, 
-                    maximum = FALSE)
+## los_min <- optimize(optimize_los, los_range, data = covid_incidH_data_NJ, observed = covid_totalHosp_data_NJ, 
+                    #maximum = FALSE)
 
 #outcome <- optimize_los(los = 6.8, data = covid_incidH_data, observed = clean_observed(nj_TotalH_data))
 
@@ -299,25 +312,25 @@ los_min <- optimize(optimize_los, los_range, data = covid_incidH_data_NJ, observ
 # Loop to get optimized value for each state ------------------------------------
 
 # create optimization for each state 
-for (state in states_list) {
-  
-  state_data <- get(paste0("covid_incidH_data_", state))
-  
-  # Run the optimization
-  los_range <- c(3,7)
-  # tol (accuracy)  is the default value (approx. 0.0001)
-  los_min <- optimize(optimize_los, los_range, data = state_data, observed = total_hosp_data, 
-                      maximum = FALSE)
-  
-  print(los_min)
-}
+# for (state in states_list) {
+#   
+#   state_data <- get(paste0("covid_incidH_data_", state))
+#   
+#   # Run the optimization
+#   los_range <- c(3,7)
+#   # tol (accuracy)  is the default value (approx. 0.0001)
+#   los_min <- optimize(optimize_los, los_range, data = state_data, observed = total_hosp_data, 
+#                       maximum = FALSE)
+#   
+#   print(los_min)
+# }
 
 # Create optimization for each state Loop to get create total hosp df with optimized LOS  for each state ------------------------------------
 
 # create optimization for each state 
 
-create_optimization <- function(optimize_los){
-  states_list <- unique(covid_incidH_data_states$state)
+create_optimization <- function(parent_data, optimize_los){
+  states_list <- unique(parent_data$state)
   los_opt_by_state <- list()
   
   for (state in states_list) {
@@ -342,15 +355,15 @@ create_optimization <- function(optimize_los){
   assign("los_opt_by_state", los_opt_by_state, envir = .GlobalEnv)
   
 }
-create_optimization(optimize_los)
+create_optimization(parent_data = covid_HHS_data_states, optimize_los)
 
 
 ## Create final datasets for estimated burden with optimized LOS -----------------------------------
 # joined by estimate total Hosp and census total Hosp 
 # one df for all states 
 
-create_optimize_totalHosp_data <- function(los_opt_by_state = los_opt_by_state){
-  states_list <- unique(covid_incidH_data_states$state)
+create_optimize_totalHosp_data <- function(parent_data, los_opt_by_state = los_opt_by_state){
+  states_list <- unique(parent_data$state)
   combined_list <- list()
   
   for (state in states_list) {
@@ -364,9 +377,10 @@ create_optimize_totalHosp_data <- function(los_opt_by_state = los_opt_by_state){
     expected <- clean_expected(expected)
   
   combined <- inner_join(observed, expected, by = "date") %>% 
-    dplyr::select(state, date, pathogen, total_hosp, total_hosp_estimate) %>% 
+    dplyr::select(state, date, total_hosp, total_hosp_estimate) %>% 
     mutate(absolute_difference = abs(total_hosp - total_hosp_estimate),
-           difference = total_hosp - total_hosp_estimate)
+           difference = total_hosp - total_hosp_estimate,
+           relative_difference = total_hosp_estimate/total_hosp)
   
   combined_list[[state]] <- combined
   }
@@ -377,6 +391,6 @@ create_optimize_totalHosp_data <- function(los_opt_by_state = los_opt_by_state){
   
 }
 
-covid_joined_totalHosp_state_data <- create_optimize_totalHosp_data(los_opt_by_state = los_opt_by_state)
+covid_joined_totalHosp_state_data <- create_optimize_totalHosp_data(parent_data = covid_HHS_data_states_lag, los_opt_by_state = los_opt_by_state)
 
-write_parquet(covid_joined_totalHosp_state_data, "data/optimized_totalHosp_daily/Obs_Exp_totalHosp_daily.parquet")
+write_parquet(covid_joined_totalHosp_state_data, "data/optimized_totalHosp_daily/Obs_Exp_totalHosp_daily_04102024.parquet")
