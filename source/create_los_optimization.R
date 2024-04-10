@@ -393,4 +393,6 @@ create_optimize_totalHosp_data <- function(parent_data, los_opt_by_state = los_o
 
 covid_joined_totalHosp_state_data <- create_optimize_totalHosp_data(parent_data = covid_HHS_data_states_lag, los_opt_by_state = los_opt_by_state)
 
-write_parquet(covid_joined_totalHosp_state_data, "data/optimized_totalHosp_daily/Obs_Exp_totalHosp_daily_04102024.parquet")
+covid_joined_totalHosp_state_data_los <- inner_join(covid_joined_totalHosp_state_data, los_opt_by_state, by = "state")
+
+write_parquet(covid_joined_totalHosp_state_data_los, "data/optimized_totalHosp_daily/Obs_Exp_totalHosp_daily_04102024.parquet")
