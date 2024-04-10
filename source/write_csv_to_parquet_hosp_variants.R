@@ -157,5 +157,8 @@ grid.newpage()
 grid.draw(table_g)
 
 
+##### VARIANTS DATASET --------------------------------------
+variants <- read_csv("data/variants/variant_props_R17.csv")
+write_parquet(variants, "data/variants/variant_props_R17.parquet")
 
 
