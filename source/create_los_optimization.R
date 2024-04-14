@@ -20,6 +20,7 @@ source("source/data_setup_source.R")
 
 opt <- list()
 opt$gt_data_source <- "hhs_hosp"
+
 opt$delphi_api_key <- "04e7369e1541a"
 #opt$gt_NJ_total_hosp_data_path <- "data/currently_hosp_covid19_by_state_parquet/NJ_currently_hospitalized_covid19_patients.parquet" #updated file name to new parquet folder
 

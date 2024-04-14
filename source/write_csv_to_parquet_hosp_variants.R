@@ -36,7 +36,7 @@ raw_covid_totalHosp <- read_csv("data/currently_hosp_covid_data_daily/COVID-19_R
 
 clean_covid_totalHosp <- raw_covid_totalHosp %>% 
   dplyr::select(state, date, inpatient_beds, inpatient_beds_coverage, inpatient_beds_used, inpatient_beds_used_coverage,
-                inpatient_beds_used_covid, inpatient_beds_used_covid_coverage, 
+                inpatient_beds_used_covid, inpatient_beds_used_covid_coverage,
                 #total hosp data 
                 total_adult_patients_hospitalized_confirmed_and_suspected_covid, total_adult_patients_hospitalized_confirmed_and_suspected_covid_coverage,
                 total_adult_patients_hospitalized_confirmed_covid, total_adult_patients_hospitalized_confirmed_covid_coverage,
