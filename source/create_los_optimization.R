@@ -391,8 +391,18 @@ create_optimize_totalHosp_data <- function(parent_data, los_opt_by_state = los_o
   
 }
 
+# Write Final files ----------------
 covid_joined_totalHosp_state_data <- create_optimize_totalHosp_data(parent_data = covid_HHS_data_states_lag, los_opt_by_state = los_opt_by_state)
+
+covid_HHS_data <- arrow::read_parquet(opt$gt_data_path_HHS_states) %>% 
+  select(state, date, inpatient_beds, `previous_day_admission_adult_covid_confirmed_18-19`, `previous_day_admission_adult_covid_confirmed_20-29`,
+         `previous_day_admission_adult_covid_confirmed_30-39`, `previous_day_admission_adult_covid_confirmed_40-49`, `previous_day_admission_adult_covid_confirmed_50-59`,               
+         `previous_day_admission_adult_covid_confirmed_60-69`, `previous_day_admission_adult_covid_confirmed_70-79`, `previous_day_admission_adult_covid_confirmed_80+`, `previous_day_admission_adult_covid_confirmed_unknown`,
+         `previous_day_admission_pediatric_covid_confirmed_0_4`, `previous_day_admission_pediatric_covid_confirmed_12_17`, `previous_day_admission_pediatric_covid_confirmed_5_11`,
+         `previous_day_admission_pediatric_covid_confirmed_unknown`, `previous_day_admission_pediatric_covid_confirmed`, `previous_day_admission_adult_covid_confirmed`)
+
 
 covid_joined_totalHosp_state_data_los <- inner_join(covid_joined_totalHosp_state_data, los_opt_by_state, by = "state")
 
-write_parquet(covid_joined_totalHosp_state_data_los, "data/optimized_totalHosp_daily/Obs_Exp_totalHosp_daily_04102024.parquet")
+covid_joined_totalHosp_state_data_los_demographic <- left_join(covid_joined_totalHosp_state_data_los, covid_HHS_data, c("state", "date"))
+write_parquet(covid_joined_totalHosp_state_data_los, "data/optimized_totalHosp_daily/Obs_Exp_totalHosp_daily_04142024.parquet")
