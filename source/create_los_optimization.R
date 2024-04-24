@@ -406,4 +406,4 @@ covid_HHS_data <- arrow::read_parquet(opt$gt_data_path_HHS_states) %>%
 covid_joined_totalHosp_state_data_los <- inner_join(covid_joined_totalHosp_state_data, los_opt_by_state, by = "state")
 
 covid_joined_totalHosp_state_data_los_demographic <- left_join(covid_joined_totalHosp_state_data_los, covid_HHS_data, c("state", "date"))
-write_parquet(covid_joined_totalHosp_state_data_los, "data/optimized_totalHosp_daily/Obs_Exp_totalHosp_daily_04142024.parquet")
+write_parquet(covid_joined_totalHosp_state_data_los_demographic, "data/optimized_totalHosp_daily/Obs_Exp_totalHosp_daily_04142024.parquet")
