@@ -113,7 +113,7 @@ mod_peak <- lmer(capacity_prop_per100thousand ~ four_week_peak + (1|state),
 summary(mod_peak)
 
 mod_yrszn <- lmer(capacity_prop_per100thousand ~ academic_year*season + (1|state),
-                data =covid_hosp_analysis)
+                  data =covid_hosp_analysis)
 summary(mod_yrszn)
 
 mod_state <- lmer(capacity_prop_per100thousand ~ (1|state),
@@ -121,7 +121,7 @@ mod_state <- lmer(capacity_prop_per100thousand ~ (1|state),
 summary(mod_state)
 
 mod_date <- lmer(capacity_prop_per100thousand ~ date + (1|state),
-               data =covid_hosp_analysis)
+                 data =covid_hosp_analysis)
 summary(mod_date)
 
 # table of output 
@@ -291,16 +291,16 @@ anova(mod3, mod4)
 #label(covid_hosp_analysis$season) <- "Season"
 #label(covid_hosp_analysis$four_week_peak) <- "Peak Period"
 finalmod <- lmer(capacity_prop_per100thousand ~ season + four_week_peak + wild_percent_rescaled + delta_percent_rescaled + omicron_percent_rescaled + (1|state),
-             data =covid_hosp_analysis)
+                 data =covid_hosp_analysis)
 #summ(finalmod,confint=getOption("summ-confint",TRUE),digits=4)
 summary(finalmod)
 cAIC(finalmod)
 finalmod
 
 regression_plot <- sjPlot::plot_model(finalmod,
-                   show.values=TRUE, show.p=TRUE,
-                   show.legend = TRUE,
-                   title="Association of Season, Peak, and Variants on Under- and Over- Estimating Inpatient Hospitalizations (per 100,000)") +
+                                      show.values=TRUE, show.p=TRUE,
+                                      show.legend = TRUE,
+                                      title="Association of Season, Peak, and Variants on Under- and Over- Estimating Inpatient Hospitalizations (per 100,000)") +
   theme_bw()
 ggsave("capstone figures/plot_model_output.png", regression_plot, width = 10, height = 6, units = "in")
 
