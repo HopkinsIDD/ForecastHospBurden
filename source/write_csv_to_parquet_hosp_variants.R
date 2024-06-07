@@ -1,3 +1,4 @@
+# Setup -------------
 library(tidyverse)
 library(arrow)
 library(gtable)
@@ -5,34 +6,8 @@ library(grid)
 library(gridExtra)
 library(naniar)
 
-
-# # create state_files list for loop 
-# # Updated state_files list with specified path structure
-# state_files <- list(
-#   "NJ" = "data/currently_hosp_covid19_by_state_csv/data_table_for_currently_hospitalized_covid19_patients_-_new_jersey.csv",
-#   "NY" = "data/currently_hosp_covid19_by_state_csv/data_table_for_currently_hospitalized_covid19_patients_-_new_york.csv",
-#   "PA" = "data/currently_hosp_covid19_by_state_csv/data_table_for_currently_hospitalized_covid19_patients_-_pennsylvania.csv",
-#   "MD" = "data/currently_hosp_covid19_by_state_csv/data_table_for_currently_hospitalized_covid19_patients_-_maryland.csv"
-# )
-# 
-# 
-# # create for loop to read in / clean / export for each state 
-# for (state in names(state_files)) {
-#   # read in csv file 
-#   data <- read_csv(state_files[[state]], skip = 2)
-#   
-#   # clean data up 
-#   data <- data %>% 
-#     mutate(date = as.Date(Date, format = "%b %d %Y"),
-#            total_hosp = as.numeric(`Currently Hospitalized COVID-19 Patients`),
-#            state = Geography) %>% 
-#     select(state, date, total_hosp)
-#   
-#   # Write to parquet file
-#   write_parquet(data, paste0("data/currently_hosp_covid19_by_state_parquet/", state, "_currently_hospitalized_covid19_patients.parquet"))
-# }
-
-raw_covid_totalHosp <- read_csv("data/currently_hosp_covid_data_daily/COVID-19_Reported_Patient_Impact_and_Hospital_Capacity_by_State_Timeseries__RAW__20240306.csv")
+# Import Initial dataset -----------
+raw_covid_totalHosp <- read_csv("data/US_wide_data/COVID-19_Reported_Patient_Impact_and_Hospital_Capacity_by_State_Timeseries__RAW__20240607.csv")
 
 clean_covid_totalHosp <- raw_covid_totalHosp %>% 
   dplyr::select(state, date, inpatient_beds, inpatient_beds_coverage, inpatient_beds_used, inpatient_beds_used_coverage,
@@ -74,17 +49,14 @@ clean_covid_totalHosp <- raw_covid_totalHosp %>%
                 `previous_day_admission_adult_covid_suspected_70-79_coverage`, `previous_day_admission_adult_covid_suspected_80+_coverage`, 
                 previous_day_admission_adult_covid_suspected_unknown_coverage, previous_day_admission_pediatric_covid_suspected_coverage)
 
+# 06-07-24 filter to all states not sample
+state_sample_covid_totalHosp <- clean_covid_totalHosp #%>% 
+#filter(state %in% c("NJ", "MD", "PA", "NY"))
 
-state_sample_covid_totalHosp <- clean_covid_totalHosp %>% 
-  filter(state %in% c("NJ", "MD", "PA", "NY"))
-
-# missing data
-
-vis_miss(state_sample_covid_totalHosp)
-
+# Visualize missing data ------------
 
 gg_miss_var(state_sample_covid_totalHosp, show_pct = TRUE)
-# missing incid / totalH data
+# missing by year 
 state_sample_covid_totalHosp %>% 
   dplyr::select(
     previous_day_admission_adult_covid_confirmed, previous_day_admission_adult_covid_suspected,
@@ -92,6 +64,7 @@ state_sample_covid_totalHosp %>%
   mutate(year = year(as.Date(date))) %>% 
   gg_miss_var(show_pct = TRUE, facet = year)
 
+# missing data by month in 2020
 state_sample_covid_totalHosp %>% 
   dplyr::select(
     previous_day_admission_adult_covid_confirmed, previous_day_admission_adult_covid_suspected,
@@ -101,24 +74,30 @@ state_sample_covid_totalHosp %>%
   mutate(month = month(date)) %>% 
   gg_miss_var(show_pct = TRUE, facet = month)
 
-# create shadow cols of missing data 
-
-shadowed_state_sample_covid_totalHosp <- state_sample_covid_totalHosp %>% 
-  bind_shadow()
-names(shadowed_state_sample_covid_totalHosp)
-
-# plot of missingness of previous day admissions age group 
-shadowed_state_sample_covid_totalHosp %>% 
+# missing data by month in 2023
+state_sample_covid_totalHosp %>% 
+  dplyr::select(
+    previous_day_admission_adult_covid_confirmed, previous_day_admission_adult_covid_suspected,
+    previous_day_admission_pediatric_covid_confirmed, previous_day_admission_pediatric_covid_suspected, inpatient_beds_used_covid, date) %>% 
   mutate(year = year(as.Date(date))) %>% 
-  filter(year == 2020) %>% 
-  ggplot(mapping = aes(x = date, # numeric or date column
-                     colour = `previous_day_admission_adult_covid_confirmed_NA`)) + # shadow column of interest
-  geom_density()                          # plots the density curves
+  filter(year %in% c(2023)) %>% 
+  mutate(month = month(date)) %>% 
+  gg_miss_var(show_pct = TRUE, facet = month)
 
+# missing data by month in 2024
+state_sample_covid_totalHosp %>% 
+  dplyr::select(
+    previous_day_admission_adult_covid_confirmed, previous_day_admission_adult_covid_suspected,
+    previous_day_admission_pediatric_covid_confirmed, previous_day_admission_pediatric_covid_suspected, inpatient_beds_used_covid, date) %>% 
+  mutate(year = year(as.Date(date))) %>% 
+  filter(year %in% c(2024)) %>% 
+  mutate(month = month(date)) %>% 
+  gg_miss_var(show_pct = TRUE, facet = month)
 
+# try to remove missingness
 
 state_sample_covid_totalHosp_origin_Aug2020 <- state_sample_covid_totalHosp %>% 
-  filter(between(date, as.Date('2020-08-01'), Sys.Date()))
+  filter(between(date, as.Date('2020-08-01'), Sys.Date())) 
 
 state_sample_covid_totalHosp_origin_Aug2020 %>% 
   dplyr::select(
@@ -127,15 +106,27 @@ state_sample_covid_totalHosp_origin_Aug2020 %>%
   mutate(year = year(as.Date(date))) %>% 
   gg_miss_var(show_pct = TRUE, facet = year)
 
+# see which states have missing data
+missing_inpatient_beds_data <- state_sample_covid_totalHosp_origin_Aug2020 %>%
+  filter(is.na(inpatient_beds_used_covid))
+
+unique_states_missing <- unique(missing_inpatient_beds_data$state)  
+
+unique_states_missing
 
 ######### FINAL DATASET ORIGIN DATE
 
-state_sample_covid_totalHosp <- state_sample_covid_totalHosp %>% 
-  filter(between(date, as.Date('2020-08-01'), Sys.Date()))
+# could filter to just states + DC not territories
+us_state_abbreviations <- c("AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DC", "DE", "FL", "GA", 
+                            "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", 
+                            "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", 
+                            "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", 
+                            "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY")
 
-write_parquet(state_sample_covid_totalHosp, "data/currently_hosp_covid_data_daily/COVID-19_Reported_Patient_Impact_and_Hospital_Capacity_by_State_Timeseries_Subset.parquet")
-# Check total COVID hospitalizations 
 
+# Check incident data source ----
+
+# confirmed and suspected incident cases vs inpatient_beds_used_covid
 state_counts <- state_sample_covid_totalHosp %>%
   mutate(check_patient_count = if_else(total_adult_patients_hospitalized_confirmed_and_suspected_covid +
                                          total_pediatric_patients_hospitalized_confirmed_and_suspected_covid ==
@@ -147,7 +138,7 @@ state_counts <- state_sample_covid_totalHosp %>%
 
 
 table <- cbind(state_counts$state, state_counts$TRUE_count, state_counts$FALSE_count)
-colnames(table) <- c("State", "TRUE Count", "FALSE Count")
+colnames(table) <- c("State", "Confirmed + Suspected = Inpateint Beds", "Confirmed + Suspected != Inpateint Beds")
 
 # Create a gtable object
 table_g <- tableGrob(table)
@@ -155,6 +146,37 @@ table_g <- tableGrob(table)
 # Draw the table
 grid.newpage()
 grid.draw(table_g)
+
+# confirmed incident cases vs inpatient_beds_used_covid
+state_counts <- state_sample_covid_totalHosp %>%
+  mutate(check_patient_count = if_else(total_adult_patients_hospitalized_confirmed_covid +
+                                         total_pediatric_patients_hospitalized_confirmed_covid ==
+                                         inpatient_beds_used_covid,
+                                       TRUE, FALSE)) %>% 
+  group_by(state) %>%
+  summarize(TRUE_count = sum(check_patient_count == TRUE, na.rm = TRUE),
+            FALSE_count = sum(check_patient_count == FALSE, na.rm = TRUE))
+
+
+table <- cbind(state_counts$state, state_counts$TRUE_count, state_counts$FALSE_count)
+colnames(table) <- c("State", "Confirmed = Inpatient Beds", "Confirmed != Inpateint Beds")
+
+# Create a gtable object
+table_g <- tableGrob(table)
+
+# Draw the table
+grid.newpage()
+grid.draw(table_g)
+
+
+# write final file ------------------------------------
+
+state_sample_covid_totalHosp <- state_sample_covid_totalHosp %>% 
+  filter(between(date, as.Date('2020-08-01'), Sys.Date())) #%>% 
+#filter(state %in% us_state_abbreviations)
+
+# last updated 6-7-24
+write_parquet(state_sample_covid_totalHosp, "data/US_wide_data/COVID-19_Reported_Patient_Impact_and_Hospital_Capacity_by_State_Timeseries_All_States_06-07-2024.parquet")
 
 
 ##### VARIANTS DATASET --------------------------------------
