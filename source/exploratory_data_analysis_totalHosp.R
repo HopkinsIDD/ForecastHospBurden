@@ -5,7 +5,7 @@ library(gtsummary)
 library(flextable)
 library(forecast)
 library(pracma)
-
+library(performance)
 ### Data Setup ----------------
 opt <- list()
 opt$gt_data_path_hosp_burden_estimates <- "data/optimized_totalHosp_daily/Obs_Exp_totalHosp_daily_04142024.parquet"
@@ -113,7 +113,7 @@ summary_los <- covid_joined_totalHosp_state_data_analysis %>%
   group_by(state) %>% 
   summarise(optimized_los = optimized_los,
             days_overestimate = days_overestimate
-            )
+  )
 summary_los <- covid_joined_totalHosp_state_data_analysis %>%
   mutate(days_overestimate = summarise_if(.predicate = ~sum(. > 0), vars(difference)))
 
@@ -129,8 +129,8 @@ summary_los <- covid_joined_totalHosp_state_data_analysis %>%
   summarise(
     optimized_los = first(optimized_los),
     sum_difference_greater_than_0 = sum(difference[difference > 0]),
-            sum_difference_less_than_0 = sum(difference[difference < 0]),
-            absolute_sum_difference = sum(abs(difference))) 
+    sum_difference_less_than_0 = sum(difference[difference < 0]),
+    absolute_sum_difference = sum(abs(difference))) 
 summary_los <- covid_joined_totalHosp_state_data_analysis %>%
   group_by(state) %>%
   summarise(
@@ -150,9 +150,42 @@ summary_los <- covid_joined_totalHosp_state_data_analysis %>%
     proportion_difference_greater_than_25 = sum(difference > 25) / total_days
   )
 
+summary_los_percent <- covid_joined_totalHosp_state_data_analysis %>%
+  group_by(state) %>%
+  summarise(
+    optimized_los = first(optimized_los),
+    count_difference_between_minus10_and_10 = sum(difference >= -0.1 * total_hosp & difference <= 0.1 * total_hosp),
+    count_difference_less_than_minus10 = sum(difference < -0.1 * total_hosp),
+    count_difference_greater_than_10 = sum(difference > 0.1 * total_hosp),
+    count_difference_between_minus25_and_25 = sum(difference >= -0.25 * total_hosp & difference <= 0.25 * total_hosp),
+    count_difference_less_than_minus25 = sum(difference < -0.25 * total_hosp),
+    count_difference_greater_than_25 = sum(difference > 0.25 * total_hosp),
+    total_days = n(),
+    proportion_difference_between_minus10_and_10 = sum(difference >= -0.1 * total_hosp & difference <= 0.1 * total_hosp) / total_days,
+    proportion_difference_between_minus25_and_25 = sum(difference >= -0.25 * total_hosp & difference <= 0.25 * total_hosp) / total_days,
+    proportion_difference_less_than_minus10 = sum(difference < -0.1 * total_hosp) / total_days,
+    proportion_difference_less_than_minus25 = sum(difference < -0.25 * total_hosp) / total_days,
+    proportion_difference_greater_than_10 = sum(difference > 0.1 * total_hosp) / total_days,
+    proportion_difference_greater_than_25 = sum(difference > 0.25 * total_hosp) / total_days
+  )
+
 write.csv(summary_los, "summary_los.csv", row.names = FALSE)
 
+summary_los_5percent <- covid_joined_totalHosp_state_data_analysis %>%
+  mutate(difference = -difference) %>% 
+  group_by(state) %>%
+  summarise(
+    optimized_los = first(optimized_los),
+    count_difference_between_minus5_and_5 = sum(difference >= -0.05 * total_hosp & difference <= 0.05 * total_hosp),
+    count_difference_less_than_minus5 = sum(difference < -0.05 * total_hosp),
+    count_difference_greater_than_5 = sum(difference > 0.05 * total_hosp),
+    total_days = n(),
+    proportion_difference_between_minus5_and_5 = sum(difference >= -0.05 * total_hosp & difference <= 0.05 * total_hosp) / total_days,
+    proportion_difference_less_than_minus5 = sum(difference < -0.05 * total_hosp) / total_days,
+    proportion_difference_greater_than_5 = sum(difference > 0.05 * total_hosp) / total_days
+  )
 
+write.csv(summary_los_5percent, "summary_los_5percent.csv", row.names = FALSE)
 
 # check distribution of total_cases to ID peaks and valleys -----------
 
@@ -331,11 +364,11 @@ peaks_and_valleys_quantiles <- function(df) {
       
       year_df <- year_df %>% 
         mutate(peak_period = as.factor(ifelse(total_hosp > above_Q75, 1, 0)),
-          trough_period = as.factor(ifelse(total_hosp < below_Q25, 1, 0)),
-          middle_period = as.factor(ifelse(peak_period == 0 & trough_period == 0, 1, 0)))
+               trough_period = as.factor(ifelse(total_hosp < below_Q25, 1, 0)),
+               middle_period = as.factor(ifelse(peak_period == 0 & trough_period == 0, 1, 0)))
       
       # Find peaks and valleys for the current academic year and state
-    
+      
       
       # join peaks/valleys to df 
       master_df <- left_join(df, year_df, by = c("state", "date", "total_hosp", "academic_year"))
@@ -393,7 +426,7 @@ ggplot(covid_joined_totalHosp_state_data_analysis, aes(x = date, y = total_hosp_
 covid_hosp_analysis <- covid_joined_totalHosp_state_data_analysis %>% 
   select(state, date, year, academic_year, total_hosp, total_hosp_estimate, difference, relative_difference, capacity_dif_prop, capacity_prop_per100thousand,
          season, dominant_variant, four_week_peak, four_week_valley, peak_period, middle_period, trough_period)
-       
+
 write_parquet(covid_hosp_analysis, "data/analysis_data/hospburden_analysis.parquet")                                     
 # explore as indicator vars vs. dummy vars 
 #state, year, season, dominant_variant,            
@@ -414,10 +447,10 @@ covid_joined_totalHosp_state_data_analysis %>%
                 season ~ "categorical",
                 peak_period   ~ "categorical"),
     label  = list(state      ~ "State",
-                 year ~ "Year",
-                 season ~ "Season",
-                 peak_average   ~ "Above Average",
-                 totalHosp_split   ~ "Dist of Hosp Estimates"),
+                  year ~ "Year",
+                  season ~ "Season",
+                  peak_average   ~ "Above Average",
+                  totalHosp_split   ~ "Dist of Hosp Estimates"),
   ) %>%
   modify_header(label = "**Variable**") %>%
   modify_caption("Total Hospitalization Time Series Characteristics") %>%
