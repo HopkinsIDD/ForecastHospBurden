@@ -59,60 +59,36 @@ gg_miss_var(state_sample_covid_totalHosp, show_pct = TRUE)
 # missing by year 
 state_sample_covid_totalHosp %>% 
   dplyr::select(
-    previous_day_admission_adult_covid_confirmed, previous_day_admission_adult_covid_suspected,
-    previous_day_admission_pediatric_covid_confirmed, previous_day_admission_pediatric_covid_suspected, inpatient_beds_used_covid, date) %>% 
+    previous_day_admission_adult_covid_confirmed,
+    previous_day_admission_pediatric_covid_confirmed, 
+    total_adult_patients_hospitalized_confirmed_covid, 
+    total_pediatric_patients_hospitalized_confirmed_covid,
+    date) %>% 
   mutate(year = year(as.Date(date))) %>% 
   gg_miss_var(show_pct = TRUE, facet = year)
 
-# missing data by month in 2020
-state_sample_covid_totalHosp %>% 
-  dplyr::select(
-    previous_day_admission_adult_covid_confirmed, previous_day_admission_adult_covid_suspected,
-    previous_day_admission_pediatric_covid_confirmed, previous_day_admission_pediatric_covid_suspected, inpatient_beds_used_covid, date) %>% 
-  mutate(year = year(as.Date(date))) %>% 
-  filter(year %in% c(2020)) %>% 
-  mutate(month = month(date)) %>% 
-  gg_miss_var(show_pct = TRUE, facet = month)
-
-# missing data by month in 2023
-state_sample_covid_totalHosp %>% 
-  dplyr::select(
-    previous_day_admission_adult_covid_confirmed, previous_day_admission_adult_covid_suspected,
-    previous_day_admission_pediatric_covid_confirmed, previous_day_admission_pediatric_covid_suspected, inpatient_beds_used_covid, date) %>% 
-  mutate(year = year(as.Date(date))) %>% 
-  filter(year %in% c(2023)) %>% 
-  mutate(month = month(date)) %>% 
-  gg_miss_var(show_pct = TRUE, facet = month)
-
-# missing data by month in 2024
-state_sample_covid_totalHosp %>% 
-  dplyr::select(
-    previous_day_admission_adult_covid_confirmed, previous_day_admission_adult_covid_suspected,
-    previous_day_admission_pediatric_covid_confirmed, previous_day_admission_pediatric_covid_suspected, inpatient_beds_used_covid, date) %>% 
-  mutate(year = year(as.Date(date))) %>% 
-  filter(year %in% c(2024)) %>% 
-  mutate(month = month(date)) %>% 
-  gg_miss_var(show_pct = TRUE, facet = month)
-
-# try to remove missingness
+# remove missing date ---- 
 
 state_sample_covid_totalHosp_origin_Aug2020 <- state_sample_covid_totalHosp %>% 
   filter(between(date, as.Date('2020-08-01'), Sys.Date())) 
 
 state_sample_covid_totalHosp_origin_Aug2020 %>% 
   dplyr::select(
-    previous_day_admission_adult_covid_confirmed, previous_day_admission_adult_covid_suspected,
-    previous_day_admission_pediatric_covid_confirmed, previous_day_admission_pediatric_covid_suspected, inpatient_beds_used_covid, date) %>% 
+    previous_day_admission_adult_covid_confirmed,
+    previous_day_admission_pediatric_covid_confirmed, 
+    total_adult_patients_hospitalized_confirmed_covid, 
+    total_pediatric_patients_hospitalized_confirmed_covid,
+    date) %>% 
   mutate(year = year(as.Date(date))) %>% 
   gg_miss_var(show_pct = TRUE, facet = year)
 
 # see which states have missing data
-missing_inpatient_beds_data <- state_sample_covid_totalHosp_origin_Aug2020 %>%
-  filter(is.na(inpatient_beds_used_covid))
-
-unique_states_missing <- unique(missing_inpatient_beds_data$state)  
-
-unique_states_missing
+# missing_inpatient_beds_data <- state_sample_covid_totalHosp_origin_Aug2020 %>%
+#   filter(is.na(inpatient_beds_used_covid))
+# 
+# unique_states_missing <- unique(missing_inpatient_beds_data$state)  
+# 
+# unique_states_missing
 
 ######### FINAL DATASET ORIGIN DATE
 
@@ -125,55 +101,54 @@ us_state_abbreviations <- c("AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DC", "DE"
 
 
 # Check incident data source ----
-
-# confirmed and suspected incident cases vs inpatient_beds_used_covid
-state_counts <- state_sample_covid_totalHosp %>%
-  mutate(check_patient_count = if_else(total_adult_patients_hospitalized_confirmed_and_suspected_covid +
-                                         total_pediatric_patients_hospitalized_confirmed_and_suspected_covid ==
-                                         inpatient_beds_used_covid,
-                                       TRUE, FALSE)) %>% 
-  group_by(state) %>%
-  summarize(TRUE_count = sum(check_patient_count == TRUE, na.rm = TRUE),
-            FALSE_count = sum(check_patient_count == FALSE, na.rm = TRUE))
-
-
-table <- cbind(state_counts$state, state_counts$TRUE_count, state_counts$FALSE_count)
-colnames(table) <- c("State", "Confirmed + Suspected = Inpateint Beds", "Confirmed + Suspected != Inpateint Beds")
-
-# Create a gtable object
-table_g <- tableGrob(table)
-
-# Draw the table
-grid.newpage()
-grid.draw(table_g)
-
-# confirmed incident cases vs inpatient_beds_used_covid
-state_counts <- state_sample_covid_totalHosp %>%
-  mutate(check_patient_count = if_else(total_adult_patients_hospitalized_confirmed_covid +
-                                         total_pediatric_patients_hospitalized_confirmed_covid ==
-                                         inpatient_beds_used_covid,
-                                       TRUE, FALSE)) %>% 
-  group_by(state) %>%
-  summarize(TRUE_count = sum(check_patient_count == TRUE, na.rm = TRUE),
-            FALSE_count = sum(check_patient_count == FALSE, na.rm = TRUE))
-
-
-table <- cbind(state_counts$state, state_counts$TRUE_count, state_counts$FALSE_count)
-colnames(table) <- c("State", "Confirmed = Inpatient Beds", "Confirmed != Inpateint Beds")
-
-# Create a gtable object
-table_g <- tableGrob(table)
-
-# Draw the table
-grid.newpage()
-grid.draw(table_g)
+# 6-12-24 don't need this anymore, outdated source 
+# # confirmed and suspected incident cases vs inpatient_beds_used_covid
+# state_counts <- state_sample_covid_totalHosp %>%
+#   mutate(check_patient_count = if_else(total_adult_patients_hospitalized_confirmed_and_suspected_covid +
+#                                          total_pediatric_patients_hospitalized_confirmed_and_suspected_covid ==
+#                                          inpatient_beds_used_covid,
+#                                        TRUE, FALSE)) %>% 
+#   group_by(state) %>%
+#   summarize(TRUE_count = sum(check_patient_count == TRUE, na.rm = TRUE),
+#             FALSE_count = sum(check_patient_count == FALSE, na.rm = TRUE))
+# 
+# 
+# table <- cbind(state_counts$state, state_counts$TRUE_count, state_counts$FALSE_count)
+# colnames(table) <- c("State", "Confirmed + Suspected = Inpateint Beds", "Confirmed + Suspected != Inpateint Beds")
+# 
+# # Create a gtable object
+# table_g <- tableGrob(table)
+# 
+# # Draw the table
+# grid.newpage()
+# grid.draw(table_g)
+# 
+# # confirmed incident cases vs inpatient_beds_used_covid
+# state_counts <- state_sample_covid_totalHosp %>%
+#   mutate(check_patient_count = if_else(total_adult_patients_hospitalized_confirmed_covid +
+#                                          total_pediatric_patients_hospitalized_confirmed_covid ==
+#                                          inpatient_beds_used_covid,
+#                                        TRUE, FALSE)) %>% 
+#   group_by(state) %>%
+#   summarize(TRUE_count = sum(check_patient_count == TRUE, na.rm = TRUE),
+#             FALSE_count = sum(check_patient_count == FALSE, na.rm = TRUE))
+# 
+# 
+# table <- cbind(state_counts$state, state_counts$TRUE_count, state_counts$FALSE_count)
+# colnames(table) <- c("State", "Confirmed = Inpatient Beds", "Confirmed != Inpateint Beds")
+# 
+# # Create a gtable object
+# table_g <- tableGrob(table)
+# 
+# # Draw the table
+# grid.newpage()
+# grid.draw(table_g)
 
 
 # write final file ------------------------------------
 
 state_sample_covid_totalHosp <- state_sample_covid_totalHosp %>% 
-  filter(between(date, as.Date('2020-08-01'), Sys.Date())) #%>% 
-#filter(state %in% us_state_abbreviations)
+  filter(between(date, as.Date('2020-08-01'), Sys.Date())) # eliminates missing total hosp confirmed covid and previous day Incid H
 
 # last updated 6-7-24
 write_parquet(state_sample_covid_totalHosp, "data/US_wide_data/COVID-19_Reported_Patient_Impact_and_Hospital_Capacity_by_State_Timeseries_All_States_06-07-2024.parquet")
