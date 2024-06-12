@@ -77,7 +77,7 @@ create_totalH_df <- function(data, state){
   }
 }
 
-create_totalH_df(data = covid_HHS_data_states_lag, state)
+create_totalH_df(data = covid_HHS_data_states_lag %>% dplyr::select(-incidH, -incidH_prior_day), state) 
 
 
 # Create df of incidH data for each state  ------------------------------------
@@ -94,7 +94,7 @@ create_incidH_df <- function(data, state){
   }
 }
 
-create_incidH_df(data = covid_HHS_data_states_lag %>% dplyr::select(-total_hosp, incidH_prior_day), state)
+create_incidH_df(data = covid_HHS_data_states_lag %>% dplyr::select(-total_hosp, -incidH_prior_day), state)
 
 
 # ~ COVID-19 --------------------------------------------------------------
@@ -157,7 +157,7 @@ create_curr_hosp <- function(data_burden){
   return(new_data_burden)
 }
 
-# CLEAN DATA FOR MERGE (WEEKLY ARCHIVE) ----------------------------------- 
+# CLEAN DATA FOR MERGE  ----------------------------------- 
 
 clean_expected <- function(expected){
   expected <- expected %>%
@@ -198,7 +198,7 @@ optimize_los <- function(los, data, observed){
     dplyr::select(state, date, total_hosp, total_hosp_estimate) %>% 
     mutate(absolute_difference = abs(total_hosp - total_hosp_estimate)) %>% 
     filter(!is.na(absolute_difference)) %>% 
-    summarize(sum_absolute_difference = sum(absolute_difference)) # mean or median instead here? 
+    summarise(sum_absolute_difference = sum(absolute_difference)) # mean or median instead here? 
   
   return(combined$sum_absolute_difference)
   
@@ -248,7 +248,8 @@ create_optimization <- function(parent_data, optimize_los){
   assign("los_opt_by_state", los_opt_by_state, envir = .GlobalEnv)
   
 }
-create_optimization(parent_data = covid_HHS_data_states, optimize_los)
+create_optimization(parent_data = covid_HHS_data_states_lag, optimize_los)
+# note: parent data just for getting list of all states 
 
 
 ## Create final datasets for estimated burden with optimized LOS -----------------------------------
