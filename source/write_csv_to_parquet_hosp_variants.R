@@ -1,4 +1,3 @@
-# test
 # Setup -------------
 library(tidyverse)
 library(arrow)
@@ -51,8 +50,7 @@ clean_covid_totalHosp <- raw_covid_totalHosp %>%
                 previous_day_admission_adult_covid_suspected_unknown_coverage, previous_day_admission_pediatric_covid_suspected_coverage)
 
 # 06-07-24 filter to all states not sample
-state_sample_covid_totalHosp <- clean_covid_totalHosp #%>% 
-#filter(state %in% c("NJ", "MD", "PA", "NY"))
+state_sample_covid_totalHosp <- clean_covid_totalHosp 
 
 # Visualize missing data ------------
 
