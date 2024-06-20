@@ -1,5 +1,3 @@
-
-#test
 # SETUP -------------------------------------------------------------------
 
 library(dplyr)
@@ -249,6 +247,9 @@ create_optimization <- function(parent_data, optimize_los){
   
 }
 create_optimization(parent_data = covid_HHS_data_states_lag, optimize_los)
+
+write_parquet(los_opt_by_state, "data/US_wide_data/LOS_Optimized_by_AllStates.parquet")
+write_csv(los_opt_by_state, "data/US_wide_data/LOS_Optimized_by_AllStates.csv")
 # note: parent data just for getting list of all states 
 
 
@@ -299,4 +300,4 @@ covid_HHS_data <- arrow::read_parquet(opt$gt_data_path_HHS_states) %>%
 covid_joined_totalHosp_state_data_los <- inner_join(covid_joined_totalHosp_state_data, los_opt_by_state, by = "state")
 
 covid_joined_totalHosp_state_data_los_demographic <- left_join(covid_joined_totalHosp_state_data_los, covid_HHS_data, c("state", "date"))
-write_parquet(covid_joined_totalHosp_state_data_los_demographic, "data/optimized_totalHosp_daily/Obs_Exp_totalHosp_daily_04142024.parquet")
+write_parquet(covid_joined_totalHosp_state_data_los_demographic, "data/US_wide_data/estimated_hospitalizations_data/Obs_Exp_totalHosp_daily_06132024.parquet")
