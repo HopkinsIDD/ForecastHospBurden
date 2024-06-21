@@ -95,7 +95,7 @@ create_incidH_df <- function(data, state){
 create_incidH_df(data = covid_HHS_data_states_lag %>% dplyr::select(-total_hosp, -incidH_prior_day), state)
 
 
-# ~ COVID-19 --------------------------------------------------------------
+# COVID-19 --------------------------------------------------------------
 
 covid_HHS_data_states_lag %>%
   ggplot(aes(x = date, y = incidH, color = state)) + 
