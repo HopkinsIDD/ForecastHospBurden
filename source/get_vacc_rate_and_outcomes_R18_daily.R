@@ -210,6 +210,8 @@ state_pop_agestrat_withrisk <- state_pop_agestrat_vacc %>%
 
 ## PULL AND PROCESS ALL VACC DATA
 
+# start here *** ??
+
 if (repull_all_vacc){
   
   # 2. Vacc Age Proportions - By State and US -----------------------------------
@@ -222,7 +224,7 @@ if (repull_all_vacc){
   
   # ~ CDC Data --------------------------------------------------------------
   # Old data: for 2020-12-13 to 2023-05-10
-  # vacc_cdc <- read_csv("https://data.cdc.gov/api/views/unsk-b7fc/rows.csv?accessType=DOWNLOAD")
+  vacc_cdc <- read_csv("https://data.cdc.gov/api/views/unsk-b7fc/rows.csv?accessType=DOWNLOAD")
   
   # Changes to data for 2023 - 2024 season:
   # Cumulative Percentage of Adults 18 Years and Older Vaccinated with the Updated 2023-24 COVID-19 Vaccine
@@ -242,7 +244,8 @@ if (repull_all_vacc){
   # Vaccine coverage from 2023-24 season is PROVIDED in scenarios
   
   # Read in coverage curves from SMH repo
-  # download.file("https://raw.githubusercontent.com/midas-network/covid19-scenario-modeling-hub/master/round_resources/round18/COVID_RD18_Vaccination_curves.csv", 
+  # uncomment when need to download file
+  #download.file("https://raw.githubusercontent.com/midas-network/covid19-scenario-modeling-hub/master/round_resources/round18/COVID_RD18_Vaccination_curves.csv", 
   #               destfile = "model_input/vaccination/Round18/smh_r18_vacc_curves.csv", method = "curl")
   vacc_curves <- read_csv("model_input/vaccination/Round18/smh_r18_vacc_curves.csv")
   
@@ -260,14 +263,16 @@ if (repull_all_vacc){
   #     name == "high_risk" ~ "High risk",
   #     name == "low_risk" ~ "Low risk"
   #   )) 
-  state_pop_agestrat_withrisk_ <- state_pop_agestrat_withrisk %>% 
+  
+  # comment out? 
+  state_pop_agestrat_withrisk_ <- state_pop_agestrat_withrisk %>% # need source of state_pop_agestrat_withrisk
     mutate(Risk_group = case_when(
           risk_group == "overall" ~ "Overall",
           risk_group == "high_risk" ~ "High risk",
           risk_group == "low_risk" ~ "Low risk"
         ))
     
-  vacc_curves_ <- vacc_curves %>% 
+  vacc_curves_ <- vacc_curves %>% # can't run this without above line 
     filter(Geography != "National") %>%
     mutate(epiweek = MMWRweek::MMWRweek(Date)$MMWRweek,
            year = MMWRweek::MMWRweek(Date)$MMWRyear,
