@@ -59,7 +59,6 @@ covid_HHS_data_USA_lag <- covid_HHS_data_states_lag %>%
 
 covid_HHS_data_states_lag <- bind_rows(covid_HHS_data_states_lag, covid_HHS_data_USA_lag)
 
-
 # create file with reported incident data for Table 1 
 write_parquet(covid_HHS_data_states_lag, "data/US_wide_data/State_incidH_table1/covid_HHS_data_states_lag.parquet")
 
@@ -80,11 +79,11 @@ covid_HHS_data_states_lag %>%
   ggplot(aes(x = date, y = total_hosp, color = state)) + 
   geom_line() 
 
-covid_incidH_data_MD %>%
+covid_incidH_data_USA %>%
   ggplot(aes(x = date, y = incidH, color = state)) + 
   geom_line() 
 
-covid_totalHosp_data_MD %>%
+covid_totalHosp_data_USA %>%
   ggplot(aes(x = date, y = total_hosp, color = state)) + 
   geom_line() 
 
@@ -94,8 +93,8 @@ covid_totalHosp_data_MD %>%
 create_optimization(parent_data = covid_HHS_data_states_lag, optimize_los)
 # note: parent data just for getting list of all states
 
-write_parquet(los_opt_by_state, "data/US_wide_data/LOS_Optimized_by_AllStates.parquet")
-write_csv(los_opt_by_state, "data/US_wide_data/LOS_Optimized_by_AllStates.csv")
+write_parquet(los_opt_by_state, "data/US_wide_data/LOS_Optimized_by_AllStates_6-24-24.parquet")
+write_csv(los_opt_by_state, "data/US_wide_data/LOS_Optimized_by_AllStates_6-24-24.csv")
 
 # Write Final files ----------------
 covid_joined_totalHosp_state_data <- create_optimize_totalHosp_data(parent_data = covid_HHS_data_states_lag, los_opt_by_state = los_opt_by_state)
