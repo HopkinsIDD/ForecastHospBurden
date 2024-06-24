@@ -45,6 +45,21 @@ attr(covid_HHS_data_states_lag[["incidH"]], "label") <- "lead(previous_day_admis
 attr(covid_HHS_data_states_lag[["total_hosp"]], "label") <- "total_adult_patients_hospitalized_confirmed_covid + total_pediatric_patients_hospitalized_confirmed_covid"
 attr(covid_HHS_data_states_lag[["incidH_prior_day"]], "label") <- "previous_day_admission_adult_covid_confirmed + previous_day_admission_pediatric_covid_confirmed"
 
+# create dataset for US across time
+## add all the incident/totalHosp on a given day across all states and territories
+covid_HHS_data_USA_lag <- covid_HHS_data_states_lag %>% 
+  group_by(date) %>% 
+  summarise(total_hosp = sum(total_hosp),
+            incidH_prior_day = sum(incidH_prior_day),
+            incidH = sum(incidH)) %>% 
+  mutate(state = "USA")
+
+# Stack datasets
+## add rows of covid_HHS_data_USA_lag df to covid_HHS_data_states_lag
+
+covid_HHS_data_states_lag <- bind_rows(covid_HHS_data_states_lag, covid_HHS_data_USA_lag)
+
+
 # create file with reported incident data for Table 1 
 write_parquet(covid_HHS_data_states_lag, "data/US_wide_data/State_incidH_table1/covid_HHS_data_states_lag.parquet")
 
