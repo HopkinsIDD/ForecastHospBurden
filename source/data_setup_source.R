@@ -130,6 +130,8 @@ create_optimization <- function(parent_data, optimize_los){
   los_opt_by_state <- list()
   
   for (state in states_list) {
+    print(state) #for tracking progress
+    
     data = get(paste0("covid_incidH_data_", state))
     observed = get(paste0("covid_totalHosp_data_", state))
     
@@ -144,6 +146,7 @@ create_optimization <- function(parent_data, optimize_los){
                            optimized_los = los_min$minimum, 
                            objective = los_min$objective)
     los_opt_by_state[[state]] <- state_df
+    
   }
   
   los_opt_by_state <- do.call(rbind, los_opt_by_state)
