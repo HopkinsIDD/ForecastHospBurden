@@ -1,7 +1,7 @@
 # Setup Functions ---------------------------------------------
 
 # Create lag of one day for incidH for each state  --------
-## notes: incident data is reported for the day prior, so need to offset by one day
+## notes: output single df with all states, lagged (lead()) by one day; incident data is reported for the day prior, so need to offset by one day
 
 create_incidH_lag <- function(state_data){
   states_list <- unique(state_data$state)
@@ -23,6 +23,7 @@ create_incidH_lag <- function(state_data){
 }
 
 # Create dataframes for each state with Hospital burden data -----------------------------------
+# output: dfs for each unique state w/ hospital burden (totalHosp) data (to be used during optimization)
 
 create_totalH_df <- function(data, state){
   states_list <- unique(data$state)
@@ -37,7 +38,7 @@ create_totalH_df <- function(data, state){
 }
 
 # Create dataframes for each state with incident hospitalizations  ------------------------------------
-
+# output: dfs for each unique state w/ incident admissions (incidH) data (to be used during optimization)
 create_incidH_df <- function(data, state){
   states_list <- unique(data$state)
   
@@ -85,7 +86,7 @@ create_curr_hosp <- function(data_burden){
   new_data_burden <- data_burden %>%
     bind_rows() %>%
     as_tibble() %>%
-    dplyr::select(-admit_date, -incidH) %>% # should LOS get dropped? 
+    dplyr::select(-admit_date, -incidH) %>% 
     group_by_all() %>%
     summarise(curr_hosp = length(hosp_dates)) %>%
     ungroup()
@@ -93,7 +94,7 @@ create_curr_hosp <- function(data_burden){
 }
 
 # CLEAN DATA FOR MERGE  ----------------------------------- 
-
+# notes: rename estimated hospitalizations columns, this could be removed by renaming above vars?? 
 clean_expected <- function(expected){
   expected <- expected %>%
     rename(total_hosp_estimate = curr_hosp,
@@ -104,6 +105,8 @@ clean_expected <- function(expected){
 }
 
 # Create function that returns LOS value to be optimized on ----------------------------
+# notes: output returns absolute difference between observed (totalHosp) and expected (total_hosp_estimate) estimates of hosp burden
+# fed into create_optimization function below 
 
 optimize_los <- function(los, data, observed){
   
@@ -123,7 +126,8 @@ optimize_los <- function(los, data, observed){
 }
 
 # Estimate LOS value for each state using optimization ------------------------------------
-
+# notes: optimization function, searches for lowest absolute difference across range of 3-15 avg LOS  
+# output df with state, estimated LOS, and error 
 
 create_optimization <- function(parent_data, optimize_los){
   states_list <- unique(parent_data$state)
@@ -156,19 +160,18 @@ create_optimization <- function(parent_data, optimize_los){
 }
 
 ## Create master dataset containing optimized hosp burden for each state -----------------------------------
-
+# notes
 create_optimize_totalHosp_data <- function(parent_data, los_opt_by_state = los_opt_by_state){
   states_list <- unique(parent_data$state)
   combined_list <- list()
   
   for (state in states_list) {
-    data = get(paste0("covid_incidH_data_", state))
-    observed = get(paste0("covid_totalHosp_data_", state))
+    data = get(paste0("covid_incidH_data_", state)) # incident data used to estimate totalHosp with estimated LOS (optimization)
+    observed = get(paste0("covid_totalHosp_data_", state)) # need to join observed vs. expected at end 
     
     expected_list <- create_hosp_dates(data, los = los_opt_by_state[los_opt_by_state$state == state, "optimized_los"])
     expected <- create_curr_hosp(data_burden = expected_list)
     
-    #observed <- clean_observed(observed)
     expected <- clean_expected(expected)
     
     combined <- inner_join(observed, expected, by = "date") %>% 
@@ -180,7 +183,7 @@ create_optimize_totalHosp_data <- function(parent_data, los_opt_by_state = los_o
     combined_list[[state]] <- combined
   }
   
-  combined_df <- do.call(rbind, combined_list)
+  combined_df <- do.call(rbind, combined_list) # return df with estimates Hosp and observed hosp
   
   return(combined_df)
   
