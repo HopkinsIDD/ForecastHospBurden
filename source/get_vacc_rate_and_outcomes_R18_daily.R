@@ -135,7 +135,8 @@ census_api_key <- "c235e1b5620232fab506af060c5f8580604d89c1"
 
 # DATA --------------------------------------------------------------------
 
-state_pop <- read_csv("data/geodata_2019.csv")
+state_pop <- read_csv("data/geodata_2019_statelevel.csv")
+#state_pop <- read_csv("data/geodata_2019.csv")
 loc_dictionary <- read_csv("https://raw.githubusercontent.com/midas-network/covid19-scenario-modeling-hub/master/data-locations/locations.csv")
 
 # 1. Pop Age Proportions - By state and US ------------------------------------------
@@ -220,7 +221,6 @@ if (repull_all_vacc){
   # - set minimum age by date
   # - better IFR and Hosp adjustment
   # - stan to fit
-  
   
   # ~ CDC Data --------------------------------------------------------------
   # Old data: for 2020-12-13 to 2023-05-10
