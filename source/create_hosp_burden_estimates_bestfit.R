@@ -13,7 +13,7 @@ library(Hmisc)
 ### IMPORT INITIAL DATA -----------------------------------
 
 # source data functions
-source("source/data_setup_source.R")
+source("source/data_setup_source_bestfit.R")
 
 opt <- list()
 opt$gt_data_path <- "data/US_wide_data/COVID-19_Reported_Patient_Impact_and_Hospital_Capacity_by_State_Timeseries_All_States_06-07-2024.parquet"
@@ -92,8 +92,8 @@ create_optimization(parent_data = covid_HHS_data_states_lag, optimize_los) # not
 #los_opt_by_state <- arrow::read_parquet("data/US_wide_data/LOS_Optimized_by_AllStates_USA.parquet") # if don't want to run, load file directly 
 
 # update only when want to overwrite file 
-#write_parquet(los_opt_by_state, "data/US_wide_data/LOS_Optimized_by_AllStates_USA.parquet")
-#write_csv(los_opt_by_state, "data/US_wide_data/LOS_Optimized_by_AllStates_USA.csv")
+write_parquet(los_opt_by_state, "data/US_wide_data/LOS_Optimized_by_AllStates_USA_normal.parquet")
+write_csv(los_opt_by_state, "data/US_wide_data/LOS_Optimized_by_AllStates_USA_normal.csv")
 
 # Create hospitalization burden estimates using LOS values from optimization ---------
 
@@ -111,5 +111,5 @@ covid_HHS_data <- arrow::read_parquet(opt$gt_data_path) %>%
 covid_joined_totalHosp_state_data_los <- inner_join(covid_joined_totalHosp_state_data, los_opt_by_state, by = "state")
 
 covid_joined_totalHosp_state_data_los_demographic <- left_join(covid_joined_totalHosp_state_data_los, covid_HHS_data, c("state", "date"))
-write_parquet(covid_joined_totalHosp_state_data_los_demographic, "data/US_wide_data/estimated_hospitalizations_data/Obs_Exp_totalHosp_daily_06242024.parquet")
+write_parquet(covid_joined_totalHosp_state_data_los_demographic, "data/US_wide_data/estimated_hospitalizations_data/Obs_Exp_totalHosp_daily_normaldist.parquet")
 

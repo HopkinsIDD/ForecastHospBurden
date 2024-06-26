@@ -55,8 +55,9 @@ create_incidH_df <- function(data, state){
 
 # create functions for sampling hospitalization duration 
 covidhosp_stay_funct <- function(n, los = 5) {
-  rpois(n = n, lambda = los) 
+  rnorm(n = n, mean = los) 
 }
+
 
 burden_est_funct <- function(incidH, date, hospstayfunct = covidhosp_stay_funct, los = 5){
   lubridate::as_date(sort(unlist(sapply(X = hospstayfunct(n = incidH, los = los), function(x = X) (0:(x-1)) + date))))
