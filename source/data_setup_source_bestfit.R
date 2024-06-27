@@ -58,7 +58,7 @@ covidhosp_stay_funct <- function(n, los = 5) {
   rnorm(n = n, mean = los) 
 }
 
-distribution_type <- function(dist){
+distribution_type <- function(dist = "poisson"){
   if(dist == "poisson"){
     covidhosp_stay_funct <<- function(n, los = 5) {
       rpois(n = n, lambda = los) 
@@ -83,8 +83,9 @@ burden_est_funct <- function(incidH, date, hospstayfunct = covidhosp_stay_funct,
 
 
 # ~ Functions for Empirical data --------------------------------------
-create_hosp_dates <- function(data, los = 5){
+create_hosp_dates <- function(data, los = 5, dist = "poisson"){
   data_burden <- list()
+  distribution_type(dist = dist)
   
   for (i in 1:nrow(data)){
     
@@ -127,9 +128,9 @@ clean_expected <- function(expected){
 # notes: output returns absolute difference between observed (totalHosp) and expected (total_hosp_estimate) estimates of hosp burden
 # fed into create_optimization function below 
 
-optimize_los <- function(los, data, observed){
+optimize_los <- function(los, dist, data, observed){
   
-  expected_list <- create_hosp_dates(data, los = los)
+  expected_list <- create_hosp_dates(data, los = los, dist = dist)
   expected <- create_curr_hosp(data_burden = expected_list)
   
   expected <- clean_expected(expected)
@@ -188,7 +189,7 @@ create_optimize_totalHosp_data <- function(parent_data, los_opt_by_state = los_o
     data = get(paste0("covid_incidH_data_", state)) # incident data used to estimate totalHosp with estimated LOS (optimization)
     observed = get(paste0("covid_totalHosp_data_", state)) # need to join observed vs. expected at end 
     
-    expected_list <- create_hosp_dates(data, los = los_opt_by_state[los_opt_by_state$state == state, "optimized_los"])
+    expected_list <- create_hosp_dates(data, los = los_opt_by_state[los_opt_by_state$state == state, "optimized_los"], dist = dist)
     expected <- create_curr_hosp(data_burden = expected_list)
     
     expected <- clean_expected(expected)
