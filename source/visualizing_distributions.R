@@ -1,5 +1,5 @@
 # Generate Poisson distributed integers ----------------------------------------
-lambda <- 2.5  # Mean parameter
+lambda <- 5 # Mean parameter
 n <- 1000       # Number of samples
 data_poisson <- rpois(n, lambda)
 
@@ -7,17 +7,22 @@ data_poisson <- rpois(n, lambda)
 hist(data_poisson, breaks = 15, main = "Poisson Distribution", xlab = "Values")
 
 # Generate Negative Binomial distributed integers ----------------------------------------
-size <- 5    # Number of failures parameter
-prob <- 0.3  # Success probability parameter
-n <- 1000     # Number of samples
-data_nbinom <- rnbinom(n, size, prob)
+meanLOS <- 10   # Mean length of stay (days)
 
+# Assuming size parameter to be calculated based on empirical data or assumption
+size <- 100     # approzimates the mean when prob = 0.5 
+#prob <- meanLOS / (size + meanLOS)  # Calculate probability of discharge per day
+prob <- 0.5 #c(.3, .5, .7) 
+n <- 1000      # Number of patients or observations
+
+data_nbinom <- rnbinom(n, size, prob)
+mean(data_nbinom)
 # Plot histogram
 hist(data_nbinom, breaks = 15, main = "Negative Binomial Distribution", xlab = "Values")
 
 # Generate Gamma distributed integers ----------------------------------------
-shape <- 2   # Shape parameter (integer > 0)
-rate <- 1    # Rate parameter
+shape <- 5   # Shape parameter (integer > 0)
+rate <- 2    # Rate parameter (mean = shape / rate)
 n <- 1000     # Number of samples
 data_gamma <- rgamma(n, shape, rate)
 

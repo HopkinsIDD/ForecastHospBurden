@@ -87,7 +87,7 @@ covid_totalHosp_data_USA %>%
 
 # Estimate LOS value for each state using optimization --------------
 
-distribution_list <- c("binomial", "normal", "poisson")
+distribution_list <- c("binomial") #c("binomial", "normal", "poisson")
 
 for(dist_type in distribution_list){
   print(dist_type)
@@ -99,8 +99,11 @@ for(dist_type in distribution_list){
   #los_opt_by_state <- arrow::read_parquet("data/US_wide_data/LOS_Optimized_by_AllStates_USA.parquet") # if don't want to run, load file directly 
   
   # update only when want to overwrite file 
-  write_parquet(los_opt_by_state, paste0("data/US_wide_data/LOS_EstimatesbyStatebyDist/LOS_Optimized_by_AllStates_USA_", dist, ".parquet"))
-  write_csv(los_opt_by_state, paste0("data/US_wide_data/LOS_EstimatesbyStatebyDist/LOS_Optimized_by_AllStates_USA_", dist, ".csv"))
+  # write_parquet(los_opt_by_state, paste0("data/US_wide_data/LOS_EstimatesbyStatebyDist/LOS_Optimized_by_AllStates_USA_", dist, ".parquet"))
+  # write_csv(los_opt_by_state, paste0("data/US_wide_data/LOS_EstimatesbyStatebyDist/LOS_Optimized_by_AllStates_USA_", dist, ".csv"))
+  
+  write_parquet(los_opt_by_state, paste0("data/US_wide_data/LOS_EstimatesbyStatebyDist/LOS_Optimized_by_AllStates_USA_binom.parquet"))
+  write_csv(los_opt_by_state, paste0("data/US_wide_data/LOS_EstimatesbyStatebyDist/LOS_Optimized_by_AllStates_USA_binom.csv"))
   
   # Create hospitalization burden estimates using LOS values from optimization ---------
   
@@ -118,12 +121,8 @@ for(dist_type in distribution_list){
   covid_joined_totalHosp_state_data_los <- inner_join(covid_joined_totalHosp_state_data, los_opt_by_state, by = "state")
   
   covid_joined_totalHosp_state_data_los_demographic <- left_join(covid_joined_totalHosp_state_data_los, covid_HHS_data, c("state", "date"))
-  write_parquet(covid_joined_totalHosp_state_data_los_demographic, "data/US_wide_data/estimated_hospitalizations_data/Obs_Exp_totalHosp_daily_", dist, ".parquet")
+  write_parquet(covid_joined_totalHosp_state_data_los_demographic, "data/US_wide_data/estimated_hospitalizations_data/Obs_Exp_totalHosp_daily_binom.parquet")
   
   
   
 }
-
-# Example of correct function call
-distribution_type(dist = "normal")
-create_hosp_dates(covid_incidH_data_CO, los = 5, dist = "normal")
