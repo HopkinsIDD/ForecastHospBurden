@@ -87,11 +87,12 @@ covid_totalHosp_data_USA %>%
 
 # Estimate LOS value for each state using optimization --------------
 
-distribution_list <- c("poisson", "normal", "binomial")
+distribution_list <- c("binomial", "normal", "poisson")
 
-for(dist in distribution_list){
-  dist = dist
-  print(dist)
+for(dist_type in distribution_list){
+  print(dist_type)
+  
+  distribution_type(dist = dist_type)
   
   # this take a long time to run, prints states in alphabetical in console to check progress 
   create_optimization(parent_data = covid_HHS_data_states_lag, optimize_los) # note: parent data just for getting list of all states
@@ -122,3 +123,7 @@ for(dist in distribution_list){
   
   
 }
+
+# Example of correct function call
+distribution_type(dist = "normal")
+create_hosp_dates(covid_incidH_data_CO, los = 5, dist = "normal")
