@@ -76,7 +76,6 @@ distribution_type <- function(dist){
   }
   return(covidhosp_stay_funct)
 }
-distribution_type(dist = "binomial")
   
 burden_est_funct <- function(incidH, date, hospstayfunct = covidhosp_stay_funct, los = 5){
   lubridate::as_date(sort(unlist(sapply(X = hospstayfunct(n = incidH, los = los), function(x = X) (0:(x-1)) + date))))
