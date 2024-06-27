@@ -58,7 +58,26 @@ covidhosp_stay_funct <- function(n, los = 5) {
   rnorm(n = n, mean = los) 
 }
 
-
+distribution_type <- function(dist){
+  if(dist == "poisson"){
+    covidhosp_stay_funct <<- function(n, los = 5) {
+      rpois(n = n, lambda = los) 
+    }
+  }
+  else if(dist == "normal"){
+    covidhosp_stay_funct <<- function(n, los = 5) {
+      rnorm(n = n, mean = los)
+    }
+  }
+  else if(dist == "binomial"){
+    covidhosp_stay_funct <<- function(n, los = 5) {
+      data_nbinom <- rnbinom(n = n, size = los, prob = 0.5)
+    }
+  }
+  return(covidhosp_stay_funct)
+}
+distribution_type(dist = "binomial")
+  
 burden_est_funct <- function(incidH, date, hospstayfunct = covidhosp_stay_funct, los = 5){
   lubridate::as_date(sort(unlist(sapply(X = hospstayfunct(n = incidH, los = los), function(x = X) (0:(x-1)) + date))))
 }
