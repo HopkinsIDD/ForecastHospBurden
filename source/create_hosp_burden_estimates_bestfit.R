@@ -92,8 +92,8 @@ create_optimization(parent_data = covid_HHS_data_states_lag, optimize_los) # not
 #los_opt_by_state <- arrow::read_parquet("data/US_wide_data/LOS_Optimized_by_AllStates_USA.parquet") # if don't want to run, load file directly 
 
 # update only when want to overwrite file 
-write_parquet(los_opt_by_state, "data/US_wide_data/LOS_Optimized_by_AllStates_USA_normal.parquet")
-write_csv(los_opt_by_state, "data/US_wide_data/LOS_Optimized_by_AllStates_USA_normal.csv")
+write_parquet(los_opt_by_state, "data/US_wide_data/LOS_Optimized_by_AllStates_USA_normaldist.parquet")
+write_csv(los_opt_by_state, "data/US_wide_data/LOS_Optimized_by_AllStates_USA_normaldist.csv")
 
 # Create hospitalization burden estimates using LOS values from optimization ---------
 
