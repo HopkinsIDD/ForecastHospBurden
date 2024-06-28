@@ -74,6 +74,20 @@ distribution_type <- function(dist = "poisson"){
       data_nbinom <- rnbinom(n = n, size = los, prob = 0.5)
     }
   }
+  else if(dist == "gamma"){
+    covidhosp_stay_funct <<- function(n, los = 5) {
+      data_nbinom <- rgamma(n = n, shape = los, rate = 1)
+    }
+  }
+  else if(dist == "lognormal"){
+    covidhosp_stay_funct <<- function(n, los = 5) {
+      mean_var <- los
+      sdlog <- 1
+      meanlog <- log(mean_var) - 0.5 * sdlog^2
+      data_logseries <- rlnorm(n, meanlog)
+      data_nbinom <- rlnorm(n = n, meanlog, sdlog)
+    }
+  }
   return(covidhosp_stay_funct)
 }
   

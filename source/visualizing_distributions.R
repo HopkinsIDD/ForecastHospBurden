@@ -21,18 +21,25 @@ mean(data_nbinom)
 hist(data_nbinom, breaks = 15, main = "Negative Binomial Distribution", xlab = "Values")
 
 # Generate Gamma distributed integers ----------------------------------------
-shape <- 5   # Shape parameter (integer > 0)
-rate <- 2    # Rate parameter (mean = shape / rate)
+
+shape <-10 # Shape parameter (integer > 0) #this centers mean at 5 days with rate of 1, so shape = mean when rate = 1
+rate <- 1    # Rate parameter (mean = shape / rate)
 n <- 1000     # Number of samples
 data_gamma <- rgamma(n, shape, rate)
 
 # Plot histogram
 hist(data_gamma, breaks = 15, main = "Gamma Distribution (integer parameterization)", xlab = "Values")
-
+mean(data_gamma)
 # Generate Logarithmic Series distributed integers ----------------------------------------
-prob <- 0.4  # Success probability parameter
+# Desired mean of the variable
+mean_var <- 5
+
+meanlog <- log(mean_var) - 0.5 * sdlog^2
+sdlog <- 1
 n <- 1000     # Number of samples
-data_logseries <- rgeom(n, prob)
+data_logseries <- rlnorm(n, meanlog, sdlog)
 
 # Plot histogram
 hist(data_logseries, breaks = 15, main = "Logarithmic Series Distribution", xlab = "Values")
+mean(data_logseries)
+
