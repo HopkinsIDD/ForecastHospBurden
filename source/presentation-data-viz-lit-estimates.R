@@ -158,6 +158,7 @@ var(covid_totalHosp_data_lit$total_hosp_estimate, covid_totalHosp_data_lit$total
 var.test(covid_totalHosp_data_lit$rees_difference, covid_totalHosp_data_lit$difference) 
 var.test(covid_totalHosp_data_lit$cdc_difference, covid_totalHosp_data_lit$difference) 
 
+
 # Paper figures -------------
 figure1_LitOptBurden_State <- covid_totalHosp_data_lit %>%  
   mutate(state_names = case_when(
