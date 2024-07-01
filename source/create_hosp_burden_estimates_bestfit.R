@@ -87,8 +87,6 @@ covid_totalHosp_data_USA %>%
 
 # Estimate LOS value for each state using optimization --------------
 
-distribution_list <- c("lognormal")#c("gamma", "lognormal", "binomial", "normal", "poisson")
-
 for(dist_type in distribution_list){
   print(dist_type)
   

@@ -58,6 +58,8 @@ create_incidH_df <- function(data, state){
 #   rnorm(n = n, mean = los) 
 # }
 
+distribution_list <- c("gamma", "lognormal", "binomial", "normal", "poisson")
+
 distribution_type <- function(dist = "poisson"){
   if(dist == "poisson"){
     covidhosp_stay_funct <<- function(n, los = 5) {
