@@ -87,7 +87,7 @@ covid_totalHosp_data_USA %>%
 
 # Estimate LOS value for each state using optimization --------------
 
-distribution_list <- c("gamma", "lognormal")#c("binomial", "normal", "poisson")
+distribution_list <- c("lognormal")#c("gamma", "lognormal", "binomial", "normal", "poisson")
 
 for(dist_type in distribution_list){
   print(dist_type)
@@ -118,6 +118,6 @@ for(dist_type in distribution_list){
   covid_joined_totalHosp_state_data_los <- inner_join(covid_joined_totalHosp_state_data, los_opt_by_state, by = "state")
   
   covid_joined_totalHosp_state_data_los_demographic <- left_join(covid_joined_totalHosp_state_data_los, covid_HHS_data, c("state", "date"))
-  write_parquet(covid_joined_totalHosp_state_data_los_demographic, "data/US_wide_data/estimated_hospitalizations_data/Obs_Exp_totalHosp_daily_", dist_type, ".parquet")
+  write_parquet(covid_joined_totalHosp_state_data_los_demographic, paste0("data/US_wide_data/estimated_hospitalizations_data/Obs_Exp_totalHosp_daily_", dist_type, ".parquet"))
 
 }
