@@ -68,54 +68,129 @@ create_incidH_df(data = covid_HHS_data_states_lag %>% dplyr::select(-total_hosp,
 
 # Check incidH and totalHosp master file and USA dataframes --------------------------------------------------------------
 
-covid_HHS_data_states_lag %>%
-  ggplot(aes(x = date, y = incidH, color = state)) + 
-  geom_line() 
+# covid_HHS_data_states_lag %>%
+#   ggplot(aes(x = date, y = incidH, color = state)) + 
+#   geom_line() 
+# 
+# covid_HHS_data_states_lag %>%
+#   ggplot(aes(x = date, y = total_hosp, color = state)) + 
+#   geom_line() 
+# 
+# covid_incidH_data_USA %>%
+#   ggplot(aes(x = date, y = incidH, color = state)) + 
+#   geom_line() 
+# 
+# covid_totalHosp_data_USA %>%
+#   ggplot(aes(x = date, y = total_hosp, color = state)) + 
+#   geom_line() 
 
-covid_HHS_data_states_lag %>%
-  ggplot(aes(x = date, y = total_hosp, color = state)) + 
-  geom_line() 
 
-covid_incidH_data_USA %>%
-  ggplot(aes(x = date, y = incidH, color = state)) + 
-  geom_line() 
+# Estimate LOS value for each state using optimization with varying distributions--------------
+# 
+# for(dist_type in distribution_list){
+#   print(dist_type)
+# 
+#   select_distribution_type(dist = dist_type)
+# 
+#   # this take a long time to run, prints states in alphabetical in console to check progress
+#   create_optimization(parent_data = covid_HHS_data_states_lag, optimize_los) # note: parent data just for getting list of all states
+#   #los_opt_by_state <- arrow::read_parquet("data/US_wide_data/LOS_Optimized_by_AllStates_USA.parquet") # if don't want to run, load file directly
+# 
+#   # update only when want to overwrite file
+#   write_parquet(los_opt_by_state, paste0("data/US_wide_data/LOS_EstimatesbyStatebyDist/LOS_Optimized_by_AllStates_USA_", dist_type, ".parquet"))
+#   write_csv(los_opt_by_state, paste0("data/US_wide_data/LOS_EstimatesbyStatebyDist/LOS_Optimized_by_AllStates_USA_", dist_type, ".csv"))
+# 
+#   # Create hospitalization burden estimates using LOS values from optimization ---------
+# 
+#   # runs faster than above function (fewer outputs)
+#   covid_joined_totalHosp_state_data <- create_optimize_totalHosp_data(parent_data = covid_HHS_data_states_lag, los_opt_by_state = los_opt_by_state)
+# 
+#   # Write Final files for analysis ----------------
+#   covid_HHS_data <- arrow::read_parquet(opt$gt_data_path) %>%
+#     select(state, date, inpatient_beds, `previous_day_admission_adult_covid_confirmed_18-19`, `previous_day_admission_adult_covid_confirmed_20-29`,
+#            `previous_day_admission_adult_covid_confirmed_30-39`, `previous_day_admission_adult_covid_confirmed_40-49`, `previous_day_admission_adult_covid_confirmed_50-59`,
+#            `previous_day_admission_adult_covid_confirmed_60-69`, `previous_day_admission_adult_covid_confirmed_70-79`, `previous_day_admission_adult_covid_confirmed_80+`, `previous_day_admission_adult_covid_confirmed_unknown`,
+#            `previous_day_admission_pediatric_covid_confirmed_0_4`, `previous_day_admission_pediatric_covid_confirmed_12_17`, `previous_day_admission_pediatric_covid_confirmed_5_11`,
+#            `previous_day_admission_pediatric_covid_confirmed_unknown`, `previous_day_admission_pediatric_covid_confirmed`, `previous_day_admission_adult_covid_confirmed`)
+# 
+#   covid_joined_totalHosp_state_data_los <- inner_join(covid_joined_totalHosp_state_data, los_opt_by_state, by = "state")
+# 
+#   covid_joined_totalHosp_state_data_los_demographic <- left_join(covid_joined_totalHosp_state_data_los, covid_HHS_data, c("state", "date"))
+#   write_parquet(covid_joined_totalHosp_state_data_los_demographic, paste0("data/US_wide_data/estimated_hospitalizations_data/Obs_Exp_totalHosp_daily_", dist_type, ".parquet"))
+# 
+# }
+# 
+# # Estimate LOS value for each state using optimization with varying optimization statistic --------------
+# 
+# for(opt_stat in optimization_statistic_list){
+#   print(opt_stat)
+#   
+#   select_optimization_stat(stat = opt_stat)
+#   
+#   # this take a long time to run, prints states in alphabetical in console to check progress 
+#   create_optimization(parent_data = covid_HHS_data_states_lag, optimize_los) # note: parent data just for getting list of all states
+#   #los_opt_by_state <- arrow::read_parquet("data/US_wide_data/LOS_Optimized_by_AllStates_USA.parquet") # if don't want to run, load file directly 
+#   
+#   # update only when want to overwrite file 
+#   write_parquet(los_opt_by_state, paste0("data/US_wide_data/LOS_EstimatesbyStatebyDist/LOS_Optimized_by_AllStates_USA_", opt_stat, ".parquet"))
+#   write_csv(los_opt_by_state, paste0("data/US_wide_data/LOS_EstimatesbyStatebyDist/LOS_Optimized_by_AllStates_USA_", opt_stat, ".csv"))
+#   
+#   # Create hospitalization burden estimates using LOS values from optimization ---------
+#   
+#   # runs faster than above function (fewer outputs) 
+#   covid_joined_totalHosp_state_data <- create_optimize_totalHosp_data(parent_data = covid_HHS_data_states_lag, los_opt_by_state = los_opt_by_state)
+#   
+#   # Write Final files for analysis ----------------
+#   covid_HHS_data <- arrow::read_parquet(opt$gt_data_path) %>% 
+#     select(state, date, inpatient_beds, `previous_day_admission_adult_covid_confirmed_18-19`, `previous_day_admission_adult_covid_confirmed_20-29`,
+#            `previous_day_admission_adult_covid_confirmed_30-39`, `previous_day_admission_adult_covid_confirmed_40-49`, `previous_day_admission_adult_covid_confirmed_50-59`,               
+#            `previous_day_admission_adult_covid_confirmed_60-69`, `previous_day_admission_adult_covid_confirmed_70-79`, `previous_day_admission_adult_covid_confirmed_80+`, `previous_day_admission_adult_covid_confirmed_unknown`,
+#            `previous_day_admission_pediatric_covid_confirmed_0_4`, `previous_day_admission_pediatric_covid_confirmed_12_17`, `previous_day_admission_pediatric_covid_confirmed_5_11`,
+#            `previous_day_admission_pediatric_covid_confirmed_unknown`, `previous_day_admission_pediatric_covid_confirmed`, `previous_day_admission_adult_covid_confirmed`)
+#   
+#   covid_joined_totalHosp_state_data_los <- inner_join(covid_joined_totalHosp_state_data, los_opt_by_state, by = "state")
+#   
+#   covid_joined_totalHosp_state_data_los_demographic <- left_join(covid_joined_totalHosp_state_data_los, covid_HHS_data, c("state", "date"))
+#   write_parquet(covid_joined_totalHosp_state_data_los_demographic, paste0("data/US_wide_data/estimated_hospitalizations_data/Obs_Exp_totalHosp_daily_", opt_stat, ".parquet"))
+#   
+# }
 
-covid_totalHosp_data_USA %>%
-  ggplot(aes(x = date, y = total_hosp, color = state)) + 
-  geom_line() 
-
-
-# Estimate LOS value for each state using optimization --------------
+# Combine distribution type and optimization stat --------------------
 
 for(dist_type in distribution_list){
   print(dist_type)
   
-  distribution_type(dist = dist_type)
+  select_distribution_type(dist = dist_type)
   
-  # this take a long time to run, prints states in alphabetical in console to check progress 
-  create_optimization(parent_data = covid_HHS_data_states_lag, optimize_los) # note: parent data just for getting list of all states
-  #los_opt_by_state <- arrow::read_parquet("data/US_wide_data/LOS_Optimized_by_AllStates_USA.parquet") # if don't want to run, load file directly 
+  for(opt_stat in optimization_statistic_list){
+    print(opt_stat)
+    
+    select_optimization_stat(stat = opt_stat)
   
-  # update only when want to overwrite file 
-  write_parquet(los_opt_by_state, paste0("data/US_wide_data/LOS_EstimatesbyStatebyDist/LOS_Optimized_by_AllStates_USA_", dist_type, ".parquet"))
-  write_csv(los_opt_by_state, paste0("data/US_wide_data/LOS_EstimatesbyStatebyDist/LOS_Optimized_by_AllStates_USA_", dist_type, ".csv"))
-
-  # Create hospitalization burden estimates using LOS values from optimization ---------
-  
-  # runs faster than above function (fewer outputs) 
-  covid_joined_totalHosp_state_data <- create_optimize_totalHosp_data(parent_data = covid_HHS_data_states_lag, los_opt_by_state = los_opt_by_state)
-  
-  # Write Final files for analysis ----------------
-  covid_HHS_data <- arrow::read_parquet(opt$gt_data_path) %>% 
-    select(state, date, inpatient_beds, `previous_day_admission_adult_covid_confirmed_18-19`, `previous_day_admission_adult_covid_confirmed_20-29`,
-           `previous_day_admission_adult_covid_confirmed_30-39`, `previous_day_admission_adult_covid_confirmed_40-49`, `previous_day_admission_adult_covid_confirmed_50-59`,               
-           `previous_day_admission_adult_covid_confirmed_60-69`, `previous_day_admission_adult_covid_confirmed_70-79`, `previous_day_admission_adult_covid_confirmed_80+`, `previous_day_admission_adult_covid_confirmed_unknown`,
-           `previous_day_admission_pediatric_covid_confirmed_0_4`, `previous_day_admission_pediatric_covid_confirmed_12_17`, `previous_day_admission_pediatric_covid_confirmed_5_11`,
-           `previous_day_admission_pediatric_covid_confirmed_unknown`, `previous_day_admission_pediatric_covid_confirmed`, `previous_day_admission_adult_covid_confirmed`)
-  
-  covid_joined_totalHosp_state_data_los <- inner_join(covid_joined_totalHosp_state_data, los_opt_by_state, by = "state")
-  
-  covid_joined_totalHosp_state_data_los_demographic <- left_join(covid_joined_totalHosp_state_data_los, covid_HHS_data, c("state", "date"))
-  write_parquet(covid_joined_totalHosp_state_data_los_demographic, paste0("data/US_wide_data/estimated_hospitalizations_data/Obs_Exp_totalHosp_daily_", dist_type, ".parquet"))
-
+    # this take a long time to run, prints states in alphabetical in console to check progress
+    create_optimization(parent_data = covid_HHS_data_states_lag, optimize_los) # note: parent data just for getting list of all states
+    #los_opt_by_state <- arrow::read_parquet("data/US_wide_data/LOS_Optimized_by_AllStates_USA.parquet") # if don't want to run, load file directly
+    
+    # update only when want to overwrite file
+    write_parquet(los_opt_by_state, paste0("data/US_wide_data/LOS_EstimatesbyStatebyDist/LOS_Optimized_by_AllStates_USA_", dist_type, opt_stat, ".parquet"))
+    write_csv(los_opt_by_state, paste0("data/US_wide_data/LOS_EstimatesbyStatebyDist/LOS_Optimized_by_AllStates_USA_", dist_type, opt_stat, ".csv"))
+    
+    # Create hospitalization burden estimates using LOS values from optimization ---------
+    
+    # runs faster than above function (fewer outputs)
+    covid_joined_totalHosp_state_data <- create_optimize_totalHosp_data(parent_data = covid_HHS_data_states_lag, los_opt_by_state = los_opt_by_state)
+    
+    # Write Final files for analysis ----------------
+    covid_HHS_data <- arrow::read_parquet(opt$gt_data_path) %>%
+      select(state, date, inpatient_beds, `previous_day_admission_adult_covid_confirmed_18-19`, `previous_day_admission_adult_covid_confirmed_20-29`,
+             `previous_day_admission_adult_covid_confirmed_30-39`, `previous_day_admission_adult_covid_confirmed_40-49`, `previous_day_admission_adult_covid_confirmed_50-59`,
+             `previous_day_admission_adult_covid_confirmed_60-69`, `previous_day_admission_adult_covid_confirmed_70-79`, `previous_day_admission_adult_covid_confirmed_80+`, `previous_day_admission_adult_covid_confirmed_unknown`,
+             `previous_day_admission_pediatric_covid_confirmed_0_4`, `previous_day_admission_pediatric_covid_confirmed_12_17`, `previous_day_admission_pediatric_covid_confirmed_5_11`,
+             `previous_day_admission_pediatric_covid_confirmed_unknown`, `previous_day_admission_pediatric_covid_confirmed`, `previous_day_admission_adult_covid_confirmed`)
+    
+    covid_joined_totalHosp_state_data_los <- inner_join(covid_joined_totalHosp_state_data, los_opt_by_state, by = "state")
+    
+    covid_joined_totalHosp_state_data_los_demographic <- left_join(covid_joined_totalHosp_state_data_los, covid_HHS_data, c("state", "date"))
+    write_parquet(covid_joined_totalHosp_state_data_los_demographic, paste0("data/US_wide_data/estimated_hospitalizations_data/Obs_Exp_totalHosp_daily_", dist_type, opt_stat, ".parquet"))
+  } 
 }

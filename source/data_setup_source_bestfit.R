@@ -53,14 +53,14 @@ create_incidH_df <- function(data, state){
 
 # BUILD SIMPLE EXAMPLE BURDEN ESTIMATOR -----------------------------------
 
-# create functions for sampling hospitalization duration 
-# covidhosp_stay_funct <- function(n, los = 5) {
-#   rnorm(n = n, mean = los) 
-# }
+#create functions for sampling hospitalization duration
+covidhosp_stay_funct <- function(n, los = 5) {
+  rnorm(n = n, mean = los)
+}
 
 distribution_list <- c("gamma", "lognormal", "binomial", "normal", "poisson")
 
-distribution_type <- function(dist = "poisson"){
+select_distribution_type <- function(dist = "poisson"){
   if(dist == "poisson"){
     covidhosp_stay_funct <<- function(n, los = 5) {
       rpois(n = n, lambda = los) 
@@ -158,6 +158,48 @@ optimize_los <- function(los, data, observed){
   
   return(combined$sum_absolute_difference)
   
+}
+
+
+optimization_statistic_list <- c("sum of squares")#c("absolute difference", "sum of squares")
+
+select_optimization_stat <- function(stat = "absolute difference"){
+  if(stat == "absolute difference"){
+    optimize_los <- function(los, data, observed){
+      
+      expected_list <- create_hosp_dates(data, los = los)
+      expected <- create_curr_hosp(data_burden = expected_list)
+      
+      expected <- clean_expected(expected)
+      
+      combined <- inner_join(observed, expected, by = "date") %>% 
+        dplyr::select(state, date, total_hosp, total_hosp_estimate) %>% 
+        mutate(absolute_difference = abs(total_hosp - total_hosp_estimate)) %>% 
+        filter(!is.na(absolute_difference)) %>% 
+        summarise(optimization_stat = sum(absolute_difference)) # mean or median instead here? 
+      return(combined$optimization_stat)
+    }
+    
+    }
+  
+  else if(stat == "sum of squares"){
+    optimize_los <- function(los, data, observed){
+      
+      expected_list <- create_hosp_dates(data, los = los)
+      expected <- create_curr_hosp(data_burden = expected_list)
+      
+      expected <- clean_expected(expected)
+      
+      combined <- inner_join(observed, expected, by = "date") %>% 
+        dplyr::select(state, date, total_hosp, total_hosp_estimate) %>% 
+        mutate(sq_difference = ((total_hosp - total_hosp_estimate)^2)) %>% 
+        filter(!is.na(absolute_difference)) %>% 
+        summarise(optimization_stat = sum(sq_difference)) 
+      
+      return(combined$optimization_stat)
+    }
+    
+  }
 }
 
 # Estimate LOS value for each state using optimization ------------------------------------
