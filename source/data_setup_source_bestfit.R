@@ -236,6 +236,66 @@ create_optimization <- function(parent_data, optimize_los){
   
 }
 
+partition_by_3_months <- function(data) {
+
+  min_date <- min(data$date)  # partition by the earliest date in the dataset
+
+  intervals <- seq(min_date, today(), by = "3 months") #sequence of 3-month intervals from min_date to today
+  
+  intervals <- c(intervals, intervals[length(intervals)] + months(3)) # Add one more interval to catch any remaining dates after the last complete interval
+  
+  # Create a new column indicating the interval for each date
+  data <- data %>%
+    mutate(interval = cut(date, breaks = intervals, labels = FALSE, include.lowest = TRUE))
+  
+  return(data)
+}
+
+covid_partition <- partition_by_3_months(data = covid_incidH_data_AK)
+
+covid_partition_15 <- covid_partition %>% filter(interval == 15)
+
+create_optimization_3m <- function(parent_data, optimize_los){
+  states_list <- unique(parent_data$state)
+  los_opt_by_state <- list()
+  
+  for (state in states_list) {
+    print(state) #for tracking progress
+    
+    data = get(paste0("covid_incidH_data_", state))
+    observed = get(paste0("covid_totalHosp_data_", state))
+    
+    
+    for (interval in three_month_partitions){
+      data_3m <- data %>% 
+        filter(date %in% interval)
+      
+      observed_3m <- observed %>% 
+        filter(date %in% interval)
+      
+      print(interval)
+      los_range <- c(3,15)
+      # tol (accuracy)  is the default value (approx. 0.0001)
+      los_min <- optimize(optimize_los, los_range, data = get(paste0("covid_incidH_data_", state)), 
+                          observed = get(paste0("covid_totalHosp_data_", state)), 
+                          maximum = FALSE)
+      
+      state_df <- data.frame(state = state, 
+                             interval = interval,
+                             optimized_los = los_min$minimum, 
+                             objective = los_min$objective)
+      los_opt_by_state[[state]] <- state_df
+    }
+    
+  
+    
+  }
+  
+  los_opt_by_state <- do.call(rbind, los_opt_by_state)
+  
+  assign("los_opt_by_state", los_opt_by_state, envir = .GlobalEnv)
+  
+}
 ## Create master dataset containing optimized hosp burden for each state -----------------------------------
 # notes
 create_optimize_totalHosp_data <- function(parent_data, los_opt_by_state = los_opt_by_state){
