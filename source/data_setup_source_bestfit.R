@@ -363,7 +363,8 @@ create_optimize_totalHosp_data_3m <- function(parent_data, los_opt_by_state = lo
       expected <- clean_expected(expected)
       
       hosp_burden_3m_estimates <- inner_join(observed, expected, by = "date") %>% 
-        dplyr::select(state, date, total_hosp, total_hosp_estimate) %>% 
+        mutate(interval = i) %>% 
+        dplyr::select(state, interval, date, total_hosp, total_hosp_estimate) %>% 
         mutate(absolute_difference = abs(total_hosp - total_hosp_estimate),
                difference = total_hosp - total_hosp_estimate,
                relative_difference = total_hosp_estimate/total_hosp)
