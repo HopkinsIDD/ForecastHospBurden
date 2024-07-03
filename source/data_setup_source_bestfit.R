@@ -258,6 +258,7 @@ partition_by_3_months <- function(data) {
 create_optimization_3m <- function(parent_data, optimize_los){
   states_list <- unique(parent_data$state)
   los_opt_by_state <- list()
+  three_month_partitions <- list()
   
   for (state in states_list) {
     print(state) #for tracking progress
@@ -268,16 +269,18 @@ create_optimization_3m <- function(parent_data, optimize_los){
     data_3m_partition <- partition_by_3_months(data = data)
     observed_3m_partition <- partition_by_3_months(data = observed)
     
-    three_month_partitions <- unique(data_3m_partition$interval) 
+    intervals <- unique(data_3m_partition$interval) # unique intervals for each state
+    three_month_partitions <- intervals # store intervals for each state
+
     state_df <- data.frame()
     
-    for (interval in three_month_partitions){
-        print(interval) # for tracking
+    for (i in three_month_partitions){
+        print(i) # for tracking
         data_3m <- data_3m_partition %>% 
-          filter(interval == interval)
+          filter(interval == i)
         
         observed_3m <- observed_3m_partition %>% 
-          filter(interval == interval)
+          filter(interval == i)
         
         date_range <- interval(min(data_3m$date), max(data_3m$date))
         
@@ -288,9 +291,8 @@ create_optimization_3m <- function(parent_data, optimize_los){
                             maximum = FALSE) 
         
         LOS_estimate <- data.frame(state = state,
-                              interval = interval,
-                              date_range_start = as.Date(start(date_range)),
-                              date_range_end = as.Date(end(date_range)),
+                              interval = i,
+                              date_range = date_range,
                               optimized_los = los_min$minimum,
                               objective = los_min$objective)
         
@@ -306,6 +308,9 @@ create_optimization_3m <- function(parent_data, optimize_los){
   assign("los_opt_by_state", los_opt_by_state, envir = .GlobalEnv)
   
 }
+
+create_optimization_3m(parent_data = covid_HHS_data_states_lag %>% filter(state == "MD"), optimize_los)
+
 
 ## Create master dataset containing optimized hosp burden for each state -----------------------------------
 # notes
@@ -327,6 +332,40 @@ create_optimize_totalHosp_data <- function(parent_data, los_opt_by_state = los_o
       mutate(absolute_difference = abs(total_hosp - total_hosp_estimate),
              difference = total_hosp - total_hosp_estimate,
              relative_difference = total_hosp_estimate/total_hosp)
+    
+    combined_list[[state]] <- combined
+  }
+  
+  combined_df <- do.call(rbind, combined_list) # return df with estimates Hosp and observed hosp
+  
+  return(combined_df)
+  
+}
+
+create_optimize_totalHosp_data_3m <- function(parent_data, los_opt_by_state = los_opt_by_state){
+  states_list <- unique(parent_data$state)
+  combined_list <- list()
+  
+  for (state in states_list) {
+    data = get(paste0("covid_incidH_data_", state)) # incident data used to estimate totalHosp with estimated LOS (optimization)
+    observed = get(paste0("covid_totalHosp_data_", state)) # need to join observed vs. expected at end 
+    los_opt_by_state <- los_opt_by_state %>% filter(state == state)
+    
+    interval_list <- unique(los_opt_by_state$interval)
+    
+    for (interval in interval_list){
+      expected_list <- create_hosp_dates(data, los = los_opt_by_state[los_opt_by_state$state == state, "optimized_los"])
+      expected <- create_curr_hosp(data_burden = expected_list)
+      
+      expected <- clean_expected(expected)
+      
+      combined <- inner_join(observed, expected, by = "date") %>% 
+        dplyr::select(state, date, total_hosp, total_hosp_estimate) %>% 
+        mutate(absolute_difference = abs(total_hosp - total_hosp_estimate),
+               difference = total_hosp - total_hosp_estimate,
+               relative_difference = total_hosp_estimate/total_hosp)
+      
+    }
     
     combined_list[[state]] <- combined
   }
