@@ -161,7 +161,7 @@ optimize_los <- function(los, data, observed){
 }
 
 
-optimization_statistic_list <- c("sum of squares")#c("absolute difference", "sum of squares")
+optimization_statistic_list <- c("absolute difference", "sum of squares")
 
 select_optimization_stat <- function(stat = "absolute difference"){
   if(stat == "absolute difference"){
@@ -251,9 +251,9 @@ partition_by_3_months <- function(data) {
   return(data)
 }
 
-covid_partition <- partition_by_3_months(data = covid_incidH_data_AK)
+#covid_partition <- partition_by_3_months(data = covid_incidH_data_AK)
 
-covid_partition_15 <- covid_partition %>% filter(interval == 15)
+#covid_partition_15 <- covid_partition %>% filter(interval == 15)
 
 create_optimization_3m <- function(parent_data, optimize_los){
   states_list <- unique(parent_data$state)
@@ -265,29 +265,39 @@ create_optimization_3m <- function(parent_data, optimize_los){
     data = get(paste0("covid_incidH_data_", state))
     observed = get(paste0("covid_totalHosp_data_", state))
     
+    data_3m_partition <- partition_by_3_months(data = data)
+    observed_3m_partition <- partition_by_3_months(data = observed)
+    
+    three_month_partitions <- unique(data_3m_partition$interval) 
+    state_df <- data.frame()
     
     for (interval in three_month_partitions){
-      data_3m <- data %>% 
-        filter(date %in% interval)
-      
-      observed_3m <- observed %>% 
-        filter(date %in% interval)
-      
-      print(interval)
-      los_range <- c(3,15)
-      # tol (accuracy)  is the default value (approx. 0.0001)
-      los_min <- optimize(optimize_los, los_range, data = get(paste0("covid_incidH_data_", state)), 
-                          observed = get(paste0("covid_totalHosp_data_", state)), 
-                          maximum = FALSE)
-      
-      state_df <- data.frame(state = state, 
-                             interval = interval,
-                             optimized_los = los_min$minimum, 
-                             objective = los_min$objective)
-      los_opt_by_state[[state]] <- state_df
+        print(interval) # for tracking
+        data_3m <- data_3m_partition %>% 
+          filter(interval == interval)
+        
+        observed_3m <- observed_3m_partition %>% 
+          filter(interval == interval)
+        
+        date_range <- interval(min(data_3m$date), max(data_3m$date))
+        
+        los_range <- c(3,15)
+        # tol (accuracy)  is the default value (approx. 0.0001)
+        los_min <- optimize(optimize_los, los_range, data = data_3m, 
+                            observed = observed_3m, 
+                            maximum = FALSE) 
+        
+        LOS_estimate <- data.frame(state = state,
+                              interval = interval,
+                              date_range_start = as.Date(start(date_range)),
+                              date_range_end = as.Date(end(date_range)),
+                              optimized_los = los_min$minimum,
+                              objective = los_min$objective)
+        
+        state_df <- rbind(state_df, LOS_estimate)
     }
     
-  
+    los_opt_by_state[[state]] <- state_df  
     
   }
   
@@ -296,6 +306,7 @@ create_optimization_3m <- function(parent_data, optimize_los){
   assign("los_opt_by_state", los_opt_by_state, envir = .GlobalEnv)
   
 }
+
 ## Create master dataset containing optimized hosp burden for each state -----------------------------------
 # notes
 create_optimize_totalHosp_data <- function(parent_data, los_opt_by_state = los_opt_by_state){
