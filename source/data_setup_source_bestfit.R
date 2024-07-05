@@ -347,24 +347,29 @@ create_optimize_totalHosp_data_3m <- function(parent_data, los_opt_by_state = lo
   for (state in states_list) {
     data = get(paste0("covid_incidH_data_", state)) # incident data used to estimate totalHosp with estimated LOS (optimization)
     observed = get(paste0("covid_totalHosp_data_", state)) # need to join observed vs. expected at end 
-    los_opt_by_state <- los_opt_by_state %>% filter(state == state)
+    #los_opt_by_state <- los_opt_by_state %>% filter(state == state)
     state_df <- data.frame()
     
     data_3m_partition <- partition_by_3_months(data = data)
+    observed_3m_partition <- partition_by_3_months(data = observed)
     interval_list <- unique(los_opt_by_state$interval)
+    
     
     for (i in interval_list){
       data_3m <- data_3m_partition %>% 
+        filter(interval == i)
+      observed_3m <- observed_3m_partition %>% 
         filter(interval == i)
       
       expected_list <- create_hosp_dates(data_3m, los = los_opt_by_state[los_opt_by_state$state == state & los_opt_by_state$interval == i, "optimized_los"]) 
       expected <- create_curr_hosp(data_burden = expected_list)
       
       expected <- clean_expected(expected)
+      date_range <- interval(min(data_3m$date), max(data_3m$date))
       
-      hosp_burden_3m_estimates <- inner_join(observed, expected, by = "date") %>% 
-        mutate(interval = i) %>% 
-        dplyr::select(state, interval, date, total_hosp, total_hosp_estimate) %>% 
+      hosp_burden_3m_estimates <- inner_join(observed_3m, expected, by = "date") %>% 
+        mutate(interval_date_range = date_range) %>%
+        dplyr::select(state, date, interval, date_range, total_hosp, total_hosp_estimate) %>% 
         mutate(absolute_difference = abs(total_hosp - total_hosp_estimate),
                difference = total_hosp - total_hosp_estimate,
                relative_difference = total_hosp_estimate/total_hosp)
@@ -373,6 +378,54 @@ create_optimize_totalHosp_data_3m <- function(parent_data, los_opt_by_state = lo
     }
     
     combined_list[[state]] <- state_df
+  }
+  
+  combined_df <- do.call(rbind, combined_list) # return df with estimates Hosp and observed hosp
+  
+  return(combined_df)
+  
+}
+
+# test --------------
+create_optimize_totalHosp_data_3m <- function(parent_data, los_opt_by_state = los_opt_by_state){
+  states_list <- unique(covid_HHS_data_states_lag$state)
+  combined_list <- list()
+  
+  for (state in states_list) {
+    # data = get(paste0("covid_incidH_data_", "MD")) # incident data used to estimate totalHosp with estimated LOS (optimization)
+    # observed = get(paste0("covid_totalHosp_data_", "MD")) # need to join observed vs. expected at end 
+    # los_opt_by_state <- los_opt_by_state %>% filter(state == "MD")
+    # state_df <- data.frame()
+    # 
+    # data_3m_partition <- partition_by_3_months(data = data)
+    # observed_3m_partition <- partition_by_3_months(data = observed)
+    # interval_list <- unique(los_opt_by_state$interval)
+    
+    for (i in interval_list){
+      # data_3m <- data_3m_partition %>% 
+      #   filter(interval == 1)
+      # observed_3m <- observed_3m_partition %>% 
+      #   filter(interval == 1)
+      # 
+      # expected_list <- create_hosp_dates(data_3m, los = los_opt_by_state[los_opt_by_state$state == "MD" & los_opt_by_state$interval == 1, "optimized_los"]) 
+      # expected <- create_curr_hosp(data_burden = expected_list)
+      # 
+      # expected <- clean_expected(expected)
+      # 
+      # date_range <- interval(min(data_3m$date), max(data_3m$date))
+      
+      hosp_burden_3m_estimates <- inner_join(observed_3m, expected, by = "date") %>% 
+        #mutate(interval = i) %>% 
+        mutate(interval_date_range = date_range) %>%
+        dplyr::select(state, date, interval, date_range, total_hosp, total_hosp_estimate) %>% 
+        mutate(absolute_difference = abs(total_hosp - total_hosp_estimate),
+               difference = total_hosp - total_hosp_estimate,
+               relative_difference = total_hosp_estimate/total_hosp)
+      
+      state_df <- rbind(state_df, hosp_burden_3m_estimates)      
+    }
+    
+    combined_list[["MD"]] <- state_df
   }
   
   combined_df <- do.call(rbind, combined_list) # return df with estimates Hosp and observed hosp
