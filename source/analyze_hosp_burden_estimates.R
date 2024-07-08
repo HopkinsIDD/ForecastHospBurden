@@ -16,6 +16,7 @@ source("source/data_setup_source_bestfit.R")
 source("source/data_setup_source.R")
 
 opt <- list()
+#read in paths for distributions
 for(dist_type in distribution_list){
   
   opt_name <- paste0("gt_data_path_", dist_type)
@@ -25,14 +26,26 @@ for(dist_type in distribution_list){
 
 }
 
+#read in paths for sum of squares estimates 
+for(dist_type in distribution_list){
+  
+  opt_name <- paste0("gt_data_path_", dist_type, "_sumofsquares")
+  opt[[opt_name]] <- paste0("data/US_wide_data/estimated_hospitalizations_data/Obs_Exp_totalHosp_daily_", dist_type, "sum of squares", ".parquet")
+  
+  assign(paste0(dist_type, "_sumofsquares_hosp_burden_estimates"), read_parquet(opt[[opt_name]]), envir = .GlobalEnv)
+  
+}
+
 wb <- createWorkbook() # create excel wb to add results to
+# sumofsquares_hosp_burden_estimates
 
 #### Compare distributions ---------------------------------
 # notes: use F test (variance test) to see which distribution minimizes the error (produces the most accurate estimates) across all states
 
-for(dist_type in distribution_list){
-  df <- paste0(dist_type, "_hosp_burden_estimates")
-}
+# for(dist_type in distribution_list){
+#   df <- paste0(dist_type, "_hosp_burden_estimates")
+# }
+
 
 # distribution_list defined in source code 
 compare_distributions <- function(comparison_list = distribution_list) {
@@ -220,8 +233,54 @@ compare_distributions_by_state <- function(parent_data = poisson_hosp_burden_est
 compare_distributions_by_state(parent_data = poisson_hosp_burden_estimates, comparison_list = distribution_list)
 
 addWorksheet(wb, sheetName = "LOS Discete Dist by State")
-writeData(wb, sheet = "LOS Discete Dist by Stat", distribution_results_by_state, startCol = 1, startRow = 1)
+writeData(wb, sheet = "LOS Discete Dist by State", distribution_results_by_state, startCol = 1, startRow = 1)
 
 # compare optimization values (sum of squares vs absolute difference) ---------------------------------
 
+compare_optimization_values <- function(comparison_list = distribution_list) {
+  # Create an empty df to store the results
+  results <- data.frame(
+    null_dist = character(),
+    alternate_dist = character(),
+    F_value = numeric(),
+    p_value = numeric(),
+    null_var = numeric(),
+    alternate_var = numeric(),
+    ratio_of_variances = numeric(),
+    CI_lower = numeric(),
+    CI_upper = numeric(),
+    stringsAsFactors = FALSE
+  )
+  
+  # Perform var.test for each pair of distribution types
+  for (dist in comparison_list) {
+        # Perform var.test and extract results
+        var_test_result <- var.test(get(paste0(dist, "_sumofsquares_hosp_burden_estimates"))$difference,
+                                    get(paste0(dist, "_hosp_burden_estimates"))$difference)
+        
+        # Extract results from var.test
+        F_value <- var_test_result$statistic
+        p_value <- var_test_result$p.value
+        ratio_of_variances <- var_test_result$estimate[1]
+        CI <- var_test_result$conf.int
+        
+        # Store results in the data frame and round F_value and p_value to 4 decimals
+        results <- rbind(results, data.frame(
+          null_dist = dist,
+          alternate_dist = paste0(dist, " sum of squares"),
+          null_var = var(get(paste0(dist, "_hosp_burden_estimates"))$difference),
+          alternate_var = var(get(paste0(dist, "_sumofsquares_hosp_burden_estimates"))$difference),
+          F_value = round(F_value, 4),
+          p_value = round(p_value, 4),
+          ratio_of_variances = round(ratio_of_variances, 2),
+          CI_lower = round(CI[1], 2),
+          CI_upper = round(CI[2], 2),
+          stringsAsFactors = FALSE
+        ))
+      }
+  
+  assign("optimization_value_results", results, envir = .GlobalEnv)
+}
+
+compare_optimization_values(comparison_list = distribution_list)
 #saveWorkbook(wb, file = " data/US_wide_data/HospBurden_Comparison_Results.xlsx", overwrite = TRUE)
