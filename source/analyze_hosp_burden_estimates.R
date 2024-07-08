@@ -232,8 +232,8 @@ compare_distributions_by_state <- function(parent_data = poisson_hosp_burden_est
 
 compare_distributions_by_state(parent_data = poisson_hosp_burden_estimates, comparison_list = distribution_list)
 
-addWorksheet(wb, sheetName = "LOS Discete Dist by State")
-writeData(wb, sheet = "LOS Discete Dist by State", distribution_results_by_state, startCol = 1, startRow = 1)
+addWorksheet(wb, sheetName = "LOS Discrete Dist by State")
+writeData(wb, sheet = "LOS Discrete Dist by State", distribution_results_by_state, startCol = 1, startRow = 1)
 
 # compare optimization values (sum of squares vs absolute difference) ---------------------------------
 
@@ -283,4 +283,62 @@ compare_optimization_values <- function(comparison_list = distribution_list) {
 }
 
 compare_optimization_values(comparison_list = distribution_list)
+
+addWorksheet(wb, sheetName = "LOS Opt value by Dist Overall")
+writeData(wb, sheet = "LOS Opt value by Dist Overall", optimization_value_results, startCol = 1, startRow = 1)
+
+compare_optimization_values_noUSA <- function(comparison_list = distribution_list) {
+  # Create an empty df to store the results
+  results <- data.frame(
+    null_dist = character(),
+    alternate_dist = character(),
+    F_value = numeric(),
+    p_value = numeric(),
+    null_var = numeric(),
+    alternate_var = numeric(),
+    ratio_of_variances = numeric(),
+    CI_lower = numeric(),
+    CI_upper = numeric(),
+    stringsAsFactors = FALSE
+  )
+  
+  # Perform var.test for each pair of distribution types
+  for (dist in comparison_list) {
+    dist_sum_of_squares <- get(paste0(dist, "_sumofsquares_hosp_burden_estimates")) %>% 
+      filter(state != "USA")
+    dist_abs_dif <- get(paste0(dist, "_hosp_burden_estimates")) %>% 
+      filter(state != "USA")
+    # Perform var.test and extract results
+    var_test_result <- var.test(dist_sum_of_squares$difference,
+                                dist_abs_dif$difference)
+    
+    # Extract results from var.test
+    F_value <- var_test_result$statistic
+    p_value <- var_test_result$p.value
+    ratio_of_variances <- var_test_result$estimate[1]
+    CI <- var_test_result$conf.int
+    
+    # Store results in the data frame and round F_value and p_value to 4 decimals
+    results <- rbind(results, data.frame(
+      null_dist = dist,
+      alternate_dist = paste0(dist, " sum of squares"),
+      null_var = var(dist_abs_dif$difference),
+      alternate_var = var(dist_sum_of_squares$difference),
+      F_value = round(F_value, 4),
+      p_value = round(p_value, 4),
+      ratio_of_variances = round(ratio_of_variances, 2),
+      CI_lower = round(CI[1], 2),
+      CI_upper = round(CI[2], 2),
+      stringsAsFactors = FALSE
+    ))
+  }
+  
+  assign("optimization_value_results_noUSA", results, envir = .GlobalEnv)
+}
+
+compare_optimization_values_noUSA(comparison_list = distribution_list)
+
+addWorksheet(wb, sheetName = "LOS Opt value by Dist (No USA)")
+writeData(wb, sheet = "LOS Opt value by Dist Overall", optimization_value_results_noUSA, startCol = 1, startRow = 1)
+
 #saveWorkbook(wb, file = " data/US_wide_data/HospBurden_Comparison_Results.xlsx", overwrite = TRUE)
