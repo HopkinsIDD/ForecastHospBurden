@@ -36,16 +36,15 @@ for(dist_type in distribution_list){
   
 }
 
+# read in path for 3m LOS estimate
+opt$gt_data_path_3m_LOS <- "data/US_wide_data/estimated_hospitalizations_data/Obs_Exp_totalHosp_daily_USA_3m.parquet"
+three_month_LOS_hosp_burden_estimates <- read_parquet(opt$gt_data_path_3m_LOS)
+
 wb <- createWorkbook() # create excel wb to add results to
 # sumofsquares_hosp_burden_estimates
 
 #### Compare distributions ---------------------------------
 # notes: use F test (variance test) to see which distribution minimizes the error (produces the most accurate estimates) across all states
-
-# for(dist_type in distribution_list){
-#   df <- paste0(dist_type, "_hosp_burden_estimates")
-# }
-
 
 # distribution_list defined in source code 
 compare_distributions <- function(comparison_list = distribution_list) {
@@ -98,8 +97,6 @@ compare_distributions <- function(comparison_list = distribution_list) {
 }
 
 compare_distributions(comparison_list = distribution_list)
-results_filter <- distribution_results %>% 
-  filter(alternate_var > null_var) 
 
 # binomial fits better than poisson, result is significant 
 
@@ -339,6 +336,92 @@ compare_optimization_values_noUSA <- function(comparison_list = distribution_lis
 compare_optimization_values_noUSA(comparison_list = distribution_list)
 
 addWorksheet(wb, sheetName = "LOS Opt value by Dist (No USA)")
-writeData(wb, sheet = "LOS Opt value by Dist Overall", optimization_value_results_noUSA, startCol = 1, startRow = 1)
+writeData(wb, sheet = "LOS Opt value by Dist (No USA)", optimization_value_results_noUSA, startCol = 1, startRow = 1)
 
-#saveWorkbook(wb, file = " data/US_wide_data/HospBurden_Comparison_Results.xlsx", overwrite = TRUE)
+# compare 3m LOS hosp burden estimates to original ---------------------------------
+
+  results_3m <- data.frame(
+    null_dist = character(),
+    alternate_dist = character(),
+    F_value = numeric(),
+    p_value = numeric(),
+    null_var = numeric(),
+    alternate_var = numeric(),
+    ratio_of_variances = numeric(),
+    CI_lower = numeric(),
+    CI_upper = numeric(),
+    stringsAsFactors = FALSE
+  )
+  
+  estimates <- poisson_hosp_burden_estimates %>% 
+      filter(state != "USA")
+  estimates_3m_LOS <- three_month_LOS_hosp_burden_estimates %>% 
+      filter(state != "USA")
+  # Perform var.test and extract results
+  var_test_result <- var.test(estimates_3m_LOS$difference,
+                                estimates$difference)
+    
+    # Extract results from var.test
+    F_value <- var_test_result$statistic
+    p_value <- var_test_result$p.value
+    ratio_of_variances <- var_test_result$estimate[1]
+    CI <- var_test_result$conf.int
+    
+    # Store results in the data frame and round F_value and p_value to 4 decimals
+    results_3m <- rbind(results_3m, data.frame(
+      null_dist = "poisson estimates",
+      alternate_dist = "poisson 3m LOS estimates",
+      null_var = var(estimates$difference),
+      alternate_var = var(estimates_3m_LOS$difference),
+      null_abs_dif = sum(estimates$absolute_difference),
+      alternate_abs_dif = sum(estimates_3m_LOS$absolute_difference),
+      F_value = round(F_value, 4),
+      p_value = round(p_value, 4),
+      ratio_of_variances = round(ratio_of_variances, 2),
+      CI_lower = round(CI[1], 2),
+      CI_upper = round(CI[2], 2),
+      stringsAsFactors = FALSE
+    ))
+
+    hist(estimates_3m_LOS$difference, 
+         breaks = 1, 
+         col = "lightblue", 
+         xlab = "Difference", 
+         main = "Histogram of estimates_3m_LOS$difference")
+    
+    qqnorm(estimates_3m_LOS$difference)
+    qqline(estimates_3m_LOS$difference, col = 2)
+# look at LOS distributions for 3m estimates ---------------------------------
+    
+three_month_LOS_distributions <- arrow::read_parquet("data/US_wide_data/LOS_EstimatesbyStatebyDist/LOS_Optimized_by_AllStates_USA_3m.parquet")
+three_month_LOS_distributions_summary <- three_month_LOS_distributions %>% 
+  group_by(state) %>% 
+  summarise(min_LOS = min(optimized_los),
+    mean_LOS = mean(optimized_los), 
+    max_LOS = max(optimized_los))
+
+three_month_LOS_distributions %>% 
+  ggplot(aes(x = interval, y = optimized_los, group = state, color = state)) +
+  geom_line() 
+
+three_month_LOS_distributions_interval_summary <- three_month_LOS_distributions %>% group_by(interval) %>% 
+  mutate(min = min(optimized_los),
+             Q1 = quantile(optimized_los, 0.25),
+             mean = mean(optimized_los),
+             Q3 = quantile(optimized_los, 0.75),
+             max = max(optimized_los)) 
+  
+three_month_LOS_distributions_interval_summary %>% ggplot(aes(x = interval)) +
+  geom_ribbon(aes(ymin = min, ymax = max), fill = "lightblue", alpha = 0.3) +
+  geom_ribbon(aes(ymin = Q1, ymax = Q3), fill = "blue", alpha = 0.3) +
+  geom_line(aes(y = Q1, color = "IQR"), alpha = 0.3, size = 1.2) +
+  geom_line(aes(y = Q3, color = "IQR"), alpha = 0.3, size = 1.2) +
+  geom_line(aes(y = min, color = "Min/Max Range"), size = 1.2) +
+  geom_line(aes(y = mean, color = "Mean LOS"), linetype = "dashed", size = 1.2) +
+  geom_line(aes(y = max, color = "Min/Max Range"), size = 1.2) +
+  scale_color_manual(values = c("IQR" = "blue", "Min/Max Range" = "lightblue", "Mean LOS" = "blue")) +
+  labs(x = "3 month Interval", y = "Optimized LOS", title = "Optimized LOS Distribution over 3 month Intervals") +
+  theme_minimal()
+
+# save excel wb to google drive folder ---------------------------------
+saveWorkbook(wb, file = "/Users/sarahcotton/Library/CloudStorage/GoogleDrive-sarahcotton180@gmail.com/My Drive/COVID-19 Hosp Burden Project/HospBurden_Comparison_Results.xlsx", overwrite = TRUE)
