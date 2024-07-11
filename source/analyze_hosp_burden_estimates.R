@@ -10,6 +10,7 @@ library(gghighlight)
 library(arrow)
 library(Hmisc)
 library(openxlsx)
+library(car) # for levene test
 
 ### IMPORT INITIAL DATA -----------------------------------
 source("source/data_setup_source_bestfit.R")
@@ -27,18 +28,18 @@ for(dist_type in distribution_list){
 }
 
 #read in paths for sum of squares estimates 
-for(dist_type in distribution_list){
-  
-  opt_name <- paste0("gt_data_path_", dist_type, "_sumofsquares")
-  opt[[opt_name]] <- paste0("data/US_wide_data/estimated_hospitalizations_data/Obs_Exp_totalHosp_daily_", dist_type, "sum of squares", ".parquet")
-  
-  assign(paste0(dist_type, "_sumofsquares_hosp_burden_estimates"), read_parquet(opt[[opt_name]]), envir = .GlobalEnv)
-  
-}
+# for(dist_type in distribution_list){
+#   
+#   opt_name <- paste0("gt_data_path_", dist_type, "_sumofsquares")
+#   opt[[opt_name]] <- paste0("data/US_wide_data/estimated_hospitalizations_data/Obs_Exp_totalHosp_daily_", dist_type, "sum of squares", ".parquet")
+#   
+#   assign(paste0(dist_type, "_sumofsquares_hosp_burden_estimates"), read_parquet(opt[[opt_name]]), envir = .GlobalEnv)
+#   
+# }
 
 # read in path for 3m LOS estimate
-opt$gt_data_path_3m_LOS <- "data/US_wide_data/estimated_hospitalizations_data/Obs_Exp_totalHosp_daily_USA_3m.parquet"
-three_month_LOS_hosp_burden_estimates <- read_parquet(opt$gt_data_path_3m_LOS)
+# opt$gt_data_path_3m_LOS <- "data/US_wide_data/estimated_hospitalizations_data/Obs_Exp_totalHosp_daily_USA_3m.parquet"
+# three_month_LOS_hosp_burden_estimates <- read_parquet(opt$gt_data_path_3m_LOS)
 
 wb <- createWorkbook() # create excel wb to add results to
 # sumofsquares_hosp_burden_estimates
@@ -46,6 +47,126 @@ wb <- createWorkbook() # create excel wb to add results to
 #### Compare distributions ---------------------------------
 # notes: use F test (variance test) to see which distribution minimizes the error (produces the most accurate estimates) across all states
 
+# check normality of data  
+for (dist in distribution_list) {
+  dist1_state <- get(paste0(dist, "_hosp_burden_estimates")) %>% 
+    filter(state != "USA")
+  
+  hist(dist1_state$difference, 
+       breaks = 20, 
+       xlab = "Difference", 
+       main = paste("Histogram of", dist, "Data"))
+}
+
+# since data isn't normally, don't use F test 
+# https://www.itl.nist.gov/div898/handbook/eda/section3/eda35a.htm
+# switch from F to levene since data is not normally distributed
+
+# note on levene: when the sample size is large, small differences in group variances can produce a statistically significant Levene’s test 
+# Fligner-Killeen’s test is a non-parametric test which is robust to departures from normality and provides a good alternative or double check for the previous parametric tests.
+# compare distributions with Levene & Fligner-Killeen’s test ---------------------------------
+
+# step 1 combine data into one master df 
+hosp_burden_diff_by_distributions <- bind_rows(
+  poisson_hosp_burden_estimates %>% 
+    mutate(distribution = "poisson"),
+  negbinomial_hosp_burden_estimates %>% 
+    mutate(distribution = "negbinomial"),
+  gamma_hosp_burden_estimates %>% 
+    mutate(distribution = "gamma"),
+  normal_hosp_burden_estimates %>% 
+    mutate(distribution = "normal"),
+  lognormal_hosp_burden_estimates %>% 
+    mutate(distribution = "lognormal")) %>% 
+  filter(state != "USA") %>% 
+  select(state, date, distribution, difference)
+
+hosp_burden_diff_by_distributions_variance <- hosp_burden_diff_by_distributions %>% 
+  group_by(distribution) %>% 
+  summarise(variance = var(difference))
+print(hosp_burden_diff_by_distributions_variance)
+#neg binom lowest variance 
+
+# step 2 perform levene / fligner test
+levene_test_results <- leveneTest(difference ~ distribution, data = hosp_burden_diff_by_distributions)
+levene_test_results
+fligner_test_results <- fligner.test(difference ~ distribution, data = hosp_burden_diff_by_distributions)
+fligner_test_results
+# results show variances for at least one distribution are significant, now ID which dist is significant
+
+compare_distributions_tests <- function(comparison_list = distribution_list, data = hosp_burden_diff_by_distributions) {
+  # Initialize an empty data frame to store results
+  distribution_results <- data.frame(
+    null_dist = character(),
+    alternate_dist = character(),
+    levene_F_value = numeric(),
+    levene_p_value = numeric(),
+    fligner_chi_squared = numeric(),
+    fligner_df = numeric(),
+    fligner_p_value = numeric(),
+    stringsAsFactors = FALSE
+  )
+  
+  for (dist1 in comparison_list) {
+    for (dist2 in comparison_list) {
+      if (dist1 != dist2) {
+        print(paste("Comparing", dist1, "and", dist2))ß
+        # Perform var.test and extract results
+        data_dist <- data %>% 
+          filter(distribution %in% c(dist1, dist2))
+        
+        # Perform Levene's test
+        levene_test_results <- leveneTest(difference ~ distribution, data = data_dist)
+        levene_F_value <- levene_test_results$statistic
+        levene_p_value <- levene_test_results$`Pr(>F)`
+        
+        # Perform Fligner-Killeen test
+        fligner_test_results <- fligner.test(difference ~ distribution, data = data_dist)
+        fligner_chi_squared <- fligner_test_results$statistic
+        fligner_df <- fligner_test_results$parameter
+        fligner_p_value <- fligner_test_results$p.value
+        
+        # Store results in the data frame
+        distribution_results <- rbind(distribution_results, data.frame(
+          null_dist = dist1,
+          alternate_dist = dist2,
+          levene_F_value = levene_test_results$`F value`[1],
+          levene_p_value = levene_test_results$`Pr(>F)`[1],
+          fligner_chi_squared = round(fligner_chi_squared, 4),
+          fligner_df = fligner_df,
+          fligner_p_value = format.pval(fligner_p_value, digits = 4)
+        ))
+      }
+    }
+  }
+  assign("distribution_results", distribution_results, envir = .GlobalEnv)
+  
+}
+
+compare_distributions_tests(comparison_list = distribution_list, data = hosp_burden_diff_by_distributions)
+# compare full test output 
+compare_distributions_tests_full_results <- function(comparison_list = distribution_list, data = hosp_burden_diff_by_distributions) {
+
+  for (dist1 in comparison_list) {
+      if (dist1 != "negbinomial") {
+        print(paste("Comparing", "negbinomial", "and", dist1))
+        # Perform var.test and extract results
+        data_dist <- data %>% 
+          filter(distribution %in% c(dist1, "negbinomial"))
+        
+        # Perform Levene's test
+        levene_test_results <- leveneTest(difference ~ distribution, data = data_dist)
+        print(levene_test_results)
+        # Perform Fligner-Killeen test
+        fligner_test_results <- fligner.test(difference ~ distribution, data = data_dist)
+        print(fligner_test_results)
+      }
+    }
+  # assign("distribution_results", distribution_results, envir = .GlobalEnv)
+  
+}
+compare_distributions_tests_full_results(comparison_list = distribution_list, data = hosp_burden_diff_by_distributions)
+# neg binom lowest variance, not stat sig than gamma and poisson, but is compared to normal and lognormal
 # distribution_list defined in source code 
 compare_distributions <- function(comparison_list = distribution_list) {
   # Create an empty df to store the results
