@@ -58,7 +58,7 @@ covidhosp_stay_funct <- function(n, los = 5) {
   rnorm(n = n, mean = los)
 }
 
-distribution_list <- c("gamma", "lognormal", "binomial", "normal", "poisson") #"neg binomial"
+distribution_list <- c("gamma", "lognormal", "negbinomial", "normal", "poisson") #"neg binomial"
 
 select_distribution_type <- function(dist = "poisson"){
   if(dist == "poisson"){
@@ -71,7 +71,7 @@ select_distribution_type <- function(dist = "poisson"){
       rnorm(n = n, mean = los)
     }
   }
-  else if(dist == "binomial"){ #neg
+  else if(dist == "neg binomial"){ #neg
     covidhosp_stay_funct <<- function(n, los = 5) {
       rnbinom(n = n, size = los, prob = 0.5)
     }
@@ -93,7 +93,7 @@ select_distribution_type <- function(dist = "poisson"){
 }
 
 burden_est_funct <- function(incidH, date, hospstayfunct = covidhosp_stay_funct, los = 5){
-  lubridate::as_date(sort(unlist(sapply(X = hospstayfunct(n = incidH, los = los), function(x = X) (0:(x-1)) + date))))
+  lubridate::as_date(sort(unlist(sapply(X = hospstayfunct(n = incidH, los = los), function(x = X) (0:(x-1)) + date)))) #, method = "radix"
 }
 
 

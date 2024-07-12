@@ -167,6 +167,7 @@ compare_distributions_tests_full_results <- function(comparison_list = distribut
 }
 compare_distributions_tests_full_results(comparison_list = distribution_list, data = hosp_burden_diff_by_distributions)
 # neg binom lowest variance, not stat sig than gamma and poisson, but is compared to normal and lognormal
+
 # distribution_list defined in source code 
 compare_distributions <- function(comparison_list = distribution_list) {
   # Create an empty df to store the results
