@@ -31,8 +31,10 @@ opt$gt_data_path <- "data/US_wide_data/COVID-19_Reported_Patient_Impact_and_Hosp
 # covidhosp_stay_funct <- function(n, los = 5) {
 #   rnbinom(n = n, size = los, prob = 0.5) 
 # }
-
 # Compile the Stan model
+# create result from sampling, and then sample length of stay 
+
+
 stan_code <- "source/stan_models/hospital_stays.stan"
 stan_model <- stan_model(file = stan_code)
 

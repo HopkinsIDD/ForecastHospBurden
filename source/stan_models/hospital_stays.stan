@@ -23,11 +23,13 @@ parameters {
 model{
     
 }
-generated quantities {
+//extra output data, don't use until mode working well 
+//generated quantities {
   // Generate hospital stays for N patients
-  int hospital_stays[N];
+  //int hospital_stays[N];
   
   # call function, generate hosp stays 
-  hospital_stays = covidhosp_stay_funct(N, los);
+  //hospital_stays = covidhosp_stay_funct(N, los);
 
-}
+//}
+
