@@ -23,11 +23,11 @@ parameters {
 model{
     
 }
-generated quantities {
-  // Generate hospital stays for N patients
-  int hospital_stays[N];
-  
-  # call function, generate hosp stays 
-  hospital_stays = covidhosp_stay_funct(N, los);
-
-}
+// generated quantities {
+//   // Generate hospital stays for N patients
+//   int hospital_stays[N];
+//   
+//   # call function, generate hosp stays 
+//   hospital_stays = covidhosp_stay_funct(N, los);
+// 
+// }
