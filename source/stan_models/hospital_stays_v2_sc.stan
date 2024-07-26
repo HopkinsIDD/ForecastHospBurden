@@ -1,24 +1,27 @@
 functions {
 
-    // Function to calculate the end of hospital stays for N patients
+    // generate hospital stays for N patients
     int[] covidhosp_stayend_funct(int N, real los_mean, int[] incid_h_t) { 
-        int los_calc[N]; // Array to store length of stay calculations
-        int census_h_calc[N]; // Array to store end of hospital stay times
+        // integer N, real value los_mean, integer with time of incidH
+        int los_calc[N]; // array to store LOS for N patients 
+        int census_h_calc[N]; // array to store end of hospital stay times
         
-        // Generate length of stay using negative binomial distribution
-        los_calc = neg_binomial_rng(los_mean, 0.5); // Uses a mean length of stay and a dispersion parameter
+        // Generate length of stay ests using negative binomial distribution
+        los_calc = neg_binomial_rng(los_mean, 0.5); // Uses a mean length of stay and dispersion parameter
+        // rng random number generator 
         
-        // Calculate the end of hospitalization time by adding the length of stay to the incident day
+        // Calculate the end of hospitalization time for N Patients
         census_h_calc = los_calc + incid_h_t - 1; 
+        // mean LOS + day of hospitalization - 1 = day of end hospitalization
         
         return census_h_calc; // Return the calculated end times
     }
     
     // Function to count the number of times a value a falls within ranges defined by x and y
     int num_matches(int[] x, int[] y, int a) {
-        int n = 0; // Counter for number of matches
+        int n = 0; // initalize counter n = 0 
         for (i in 1:size(x)){
-            // Check if 'a' falls between x[i] and y[i] (inclusive)
+            // Check if 'a' falls between x[i] and y[i] 
             if (a >= x[i] & a <= y[i]){
               n += 1; // Increment count if a match is found
             }
