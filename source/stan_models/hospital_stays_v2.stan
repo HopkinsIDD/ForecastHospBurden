@@ -30,12 +30,13 @@ functions {
         array[N] int<lower=0> end_hosp_t; // individual last day of hospitalization
         end_hosp_t = calc_hosp_end_t(N, los_mean, incid_h_t);
         
+        int<lower=0> max_end_hosp; 
+        max_end_hosp = max(end_hosp_t);
+
         int<lower=0> I;
         
         // create I integer that is the max of T2 and the empirical max of end_hosp_t [FIX THIS]
-        
-        
-        I = max(end_hosp_t); // add empirical max to this
+        I = max(max_end_hosp, T2); // add empirical max to this
         array[I]<lower=0> int census_h_calc;
         
         // fill in cencus_h_calc with 0s
@@ -52,9 +53,9 @@ functions {
 }
 
 data {
-    int<lower=0> T;                // Number of dates  -- come back to this to make sure it matched the generated dates
+    int<lower=0> T2;                // Number of dates  -- come back to this to make sure it matched the generated dates
     int<lower=0> N;                // Number of obs hospitalizations
-    array[N] int<lower=0> incid_h_t; // individual day of incident hospitalization 
+    array[N] int<lower=0> incid_h_t; // individual's day of incident hospitalization 
     array[T] int<lower=0> census_h; // census hosp 
     int<lower=0> los_prior; 
 }
@@ -65,12 +66,12 @@ parameters {
 
 transformed parameters {
     array[T] int<lower=0> census_h_calc;
-    census_h_calc = covidhosp_census_funct(N, los_mean, incid_h_t); 
+    census_h_calc = covidhosp_census_funct(N, los_mean, incid_h_t); // list of hospitalizations
 }
 
 transformed data {
     
-    // create a new cencus_h_new from cencus_h that is the same length as the calculated census_h_calc
+    // create a new census_h_new from census_h that is the same length as the calculated census_h_calc
     // fill in the values of census_h_new that are greater than the length of census_h with 0
     // this is to make sure that the two arrays are the same length
     

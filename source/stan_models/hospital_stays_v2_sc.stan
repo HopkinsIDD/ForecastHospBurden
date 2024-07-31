@@ -39,6 +39,8 @@ functions {
     // a is the ... 
     // for each value of i does it fall within the rang eof x to y
     // each indv has that range 
+    // how many idv fall within that range
+    
     // Function to calculate the end of hospitalization times for N patients
     int[] calc_hosp_end_t(int N, real los_mean, int[] incid_h_t) { // num idv, LOS mean, vector of admission days (not dates)
         
