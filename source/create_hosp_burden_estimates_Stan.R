@@ -34,18 +34,18 @@ opt$gt_data_path <- "data/US_wide_data/COVID-19_Reported_Patient_Impact_and_Hosp
 # Compile the Stan model
 # create result from sampling, and then sample length of stay 
 
-
-stan_code <- "source/stan_models/hospital_stays.stan"
-stan_model <- stan_model(file = stan_code)
-
-# Specify number of patients
-N <- 100
-
-# Specify length of stay parameter (mean length of stay)
-los <- 5
-
-# Generate simulated hospital stays
-sim_data <- sampling(stan_model, data = list(N = N), chains = 1, iter = 1, warmup = 0)
+# comment out stan code 
+# stan_code <- "source/stan_models/hospital_stays.stan"
+# stan_model <- stan_model(file = stan_code)
+# 
+# # Specify number of patients
+# N <- 100
+# 
+# # Specify length of stay parameter (mean length of stay)
+# los <- 5
+# 
+# # Generate simulated hospital stays
+# sim_data <- sampling(stan_model, data = list(N = N), chains = 1, iter = 1, warmup = 0)
 
 
 # read in data, define total_hosp, incidH_prior_day
@@ -141,6 +141,25 @@ create_expected_total_hosp_vector <- function(data) {
 }
 create_expected_total_hosp_vector(data = covid_incidH_data_MD)
 expected_total_hosp_vector <- expected_total_hosp_vector[1:nrow(covid_totalHosp_data_MD)]
+
+# set up for Stan optimization ----------------------------
+covid_incidH_data_MD <- covid_incidH_data_MD %>% 
+  arrange(date) %>%
+  mutate(incid_h_t = row_number()) # convert date to numeric
+T2 <- length(covid_incidH_data_MD$date)
+N <- sum(covid_incidH_data_MD$incidH)
+covid_incidH_data_MD_long <- covid_incidH_data_MD %>% 
+  uncount(incidH) 
+incid_h_t <- covid_incidH_data_MD_long$incid_h_t
+census_h <- covid_totalHosp_data_MD$total_hosp
+los_prior <- 5
+# data {
+#   int<lower=0> T2;                // Number of dates  -- come back to this to make sure it matched the generated dates
+#   int<lower=0> N;                // Number of obs hospitalizations
+#   array[N] int<lower=0> incid_h_t; // individual's day of incident hospitalization 
+#     array[T] int<lower=0> census_h; // census hosp 
+#     int<lower=0> los_prior; 
+# }
 
 
 # stan model for estimating LOS ----------------------------

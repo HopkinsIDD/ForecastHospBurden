@@ -77,7 +77,7 @@ transformed data {
     
     // fix this to use the right value for T (maybe T2?)
     array[T] int<lower=0> census_h_new;
-    for (i in 1:T) {
+    for (i in 1:T2) {
         if (i <= N) {
             census_h_new[i] = census_h[i];
         } else {
