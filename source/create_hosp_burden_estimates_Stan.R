@@ -146,7 +146,7 @@ expected_total_hosp_vector <- expected_total_hosp_vector[1:nrow(covid_totalHosp_
 covid_incidH_data_MD <- covid_incidH_data_MD %>% 
   arrange(date) %>%
   mutate(incid_h_t = row_number()) # convert date to numeric
-T2 <- length(covid_incidH_data_MD$date)
+T <- length(covid_incidH_data_MD$date)
 N <- sum(covid_incidH_data_MD$incidH)
 covid_incidH_data_MD_long <- covid_incidH_data_MD %>% 
   uncount(incidH) 
@@ -161,6 +161,11 @@ los_prior <- 5
 #     int<lower=0> los_prior; 
 # }
 
+stan_data <- list(
+  N = length(incid_h_t),      # Number of time points or observations
+  incid_h_t = incid_h_t,      # Array of incident hospitalizations
+  census_h = census_h         # Array of total hospitalizations
+)
 
 # stan model for estimating LOS ----------------------------
 
