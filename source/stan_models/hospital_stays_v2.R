@@ -52,19 +52,20 @@ N <- 10
 los_mean <- 5
 incid_h_t <- c(1, 3, 6, 2, 1, 5, 7, 2, 8, 4)
 end_hosp_dates_t <- calc_hosp_end_t(N, los_mean, incid_h_t)
-# for each patient, calculate the end of hospitalization date
+# for each patient, calculate the end of hospitalization day
 end_hosp_dates_t
 
+T2 <-  max(c(end_hosp_t, T))
 #covidhosp_census_funct <- function(N, T2, los_mean, incid_h_t){
-covidhosp_census_funct <- function(N, los_mean, incid_h_t){
+covidhosp_census_funct <- function(N, los_mean, T2, incid_h_t){
   end_hosp_t <- calc_hosp_end_t(N, los_mean, incid_h_t) # calculate end hospitalization date 
   # I is the last end of hospitalization date (need appropriate length)
   I <- max(c(end_hosp_t, T)) # add empirical max to this 
   I
   #   // create I integer that is the max of T2 and the empirical max of end_hosp_t [FIX THIS]
   
-  census_h_calc <- rep(0, I) # create a vector of 0s of length I (stan syntax)
-  for (i in 1:I){ # I is the max of end_hosp_t aka last day of hospitalization
+  census_h_calc <- rep(0, T2) # create a vector of 0s of length I (stan syntax)
+  for (i in 1:T2){ # I is the max of end_hosp_t aka last day of hospitalization
     # for each day, calculate the number of patients hospitalized on that day
     census_h_calc[i] <- num_matches(incid_h_t, end_hosp_t, i)
   }
