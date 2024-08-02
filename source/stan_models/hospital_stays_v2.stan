@@ -3,7 +3,7 @@ functions {
 
     // generate hospital stays for N patients
 
-    int num_matches(int[] x, int[] y, int a) {
+    int num_matches(int[] x, int[] y, int a){
         int n = 0;
         for (i in 1:size(x)){
             if (a >= x[i] && a <= y[i]){
@@ -12,10 +12,11 @@ functions {
         }
         return n;
     }
-    
-    int[] calc_hosp_end_t(int N, real los_mean, int[] incid_h_t) {) { 
+
+    int[] calc_hosp_end_t(int N, real los_mean, int[] incid_h_t){ 
         
-        array[N] int<lower=0> end_hosp_t; // individual last day of hospitalization
+        //int[N] int<lower=0> end_hosp_t; // individual last day of hospitalization
+        int end_hosp_t[N]; // individual last day of hospitalization, can't use a lower here? 
         for (n in 1:N) {
             int los_calc;
             los_calc = neg_binomial_rng(los_mean, 0.5);
@@ -24,7 +25,7 @@ functions {
         return end_hosp_t;
     }
     
-    int[] covidhosp_census_funct(int N, int T2, real los_mean, int[] incid_h_t) {) { 
+    int[] covidhosp_census_funct(int N, int T2, int[] incid_h_t, int[] end_hosp_t){ // removed real los_mean, 
         // move to different block so can be read in with T2
         //array[N] int<lower=0> end_hosp_t; // individual last day of hospitalization
         //end_hosp_t = calc_hosp_end_t(N, los_mean, incid_h_t);
@@ -36,7 +37,8 @@ functions {
         //array[I]<lower=0> int census_h_calc;
         
         // replacing I with T2 defined as the max of T and the empirical max of end_hosp_t
-        array[T2]<lower=0> int census_h_calc;
+        //int[T2]<lower=0> census_h_calc;
+        int census_h_calc[T2];  
         
         // fill in cencus_h_calc with 0s
         for (i in 1:T2) {
@@ -45,7 +47,7 @@ functions {
         
         census_h_calc = 0;
         for (i in 1:T2) {
-            census_h_calc[i] = num_matches(incid_h_t, end_hosp_t, i)
+            census_h_calc[i] = num_matches(incid_h_t, end_hosp_t, i);
         }
         return census_h_calc;
     }
@@ -54,8 +56,10 @@ functions {
 data {
     int<lower=0> T;                // Number of dates  -- come back to this to make sure it matched the generated dates
     int<lower=0> N;                // Number of obs hospitalizations
-    array[N] int<lower=0> incid_h_t; // individual's day of incident hospitalization 
-    array[T] int<lower=0> census_h; // census hosp 
+    //array[N] int<lower=0> incid_h_t; // individual's day of incident hospitalization 
+    int<lower=0> incid_h_t[N]; // individual's day of incident hospitalization
+    //array[T] int<lower=0> census_h; // census hosp
+    int<lower=0> census_h[T]; // census hosp
     int<lower=0> los_prior; 
 }
 
@@ -65,11 +69,13 @@ parameters {
 
 // *check what goes in the transformed parameters vs transformed data
 transformed parameters {
-    array[T] int<lower=0> census_h_calc;
-    census_h_calc = covidhosp_census_funct(N, los_mean, incid_h_t); // list of hospitalizations
+    //array[T] int<lower=0> census_h_calc;
+    int<lower=0> census_h_calc[T]; // list of hospitalizations
+    census_h_calc = covidhosp_census_funct(N, T2, incid_h_t, end_hosp_t); // list of hospitalizations
     //census_h_calc = covidhosp_census_funct(N, T, los_mean, incid_h_t); // list of hospitalizations
     
-    array[N] int<lower=0> end_hosp_t; // individual last day of hospitalization
+    //array[N] int<lower=0> end_hosp_t; // individual last day of hospitalization
+    int<lower=0> end_hosp_t[N]; // individual last day of hospitalization
     end_hosp_t = calc_hosp_end_t(N, los_mean, incid_h_t);
     
     int<lower=0> max_end_hosp; 
@@ -77,11 +83,14 @@ transformed parameters {
 
     // fix this to use the right value for T (maybe T2?)
     // define T2 so it's the max of T (dates) and the max of end_hosp_t (empirical max of end_hosp_t
-    int T2 = max(T, max(end_hosp_t));
+    int<lower=0> T2; 
+    T2 = max(T, max(end_hosp_t));
     
     // is it better to trim census_h_calc, so it doesn't go beyond observed dates?
     // vs. adding in 0's for "oberseved" hosp dates that are beyond the end of the data?
-    array[T2] int<lower=0> census_h_new;
+    //array[T2] int<lower=0> census_h_new;
+    int<lower=0> census_h_new[T2];
+    
     for (i in 1:T2) {
         if (i <= N) {
             census_h_new[i] = census_h[i];
