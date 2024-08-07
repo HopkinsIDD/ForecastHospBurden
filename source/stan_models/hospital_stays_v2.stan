@@ -12,8 +12,8 @@ functions {
         }
         return n;
     }
-
-    int[] calc_hosp_end_t(int N, real los_mean, int[] incid_h_t){ 
+    // update function name so rng is allowed in the function    
+    int[] calc_hosp_end_t_rng(int N, real los_mean, int[] incid_h_t){ 
         
         //int[N] int<lower=0> end_hosp_t; // individual last day of hospitalization
         int end_hosp_t[N]; // individual last day of hospitalization, can't use a lower here? 
@@ -45,7 +45,6 @@ functions {
             census_h_calc[i] = 0;
         }
         
-        census_h_calc = 0;
         for (i in 1:T2) {
             census_h_calc[i] = num_matches(incid_h_t, end_hosp_t, i);
         }
@@ -63,20 +62,11 @@ data {
     int<lower=0> los_prior; 
 }
 
-parameters {
-    real<lower=0> los_mean;  // Length of stay parameter to optimize
-}
 
-// *check what goes in the transformed parameters vs transformed data
-transformed parameters {
-    //array[T] int<lower=0> census_h_calc;
-    int<lower=0> census_h_calc[T]; // list of hospitalizations
-    census_h_calc = covidhosp_census_funct(N, T2, incid_h_t, end_hosp_t); // list of hospitalizations
-    //census_h_calc = covidhosp_census_funct(N, T, los_mean, incid_h_t); // list of hospitalizations
-    
+transformed data {
     //array[N] int<lower=0> end_hosp_t; // individual last day of hospitalization
     int<lower=0> end_hosp_t[N]; // individual last day of hospitalization
-    end_hosp_t = calc_hosp_end_t(N, los_mean, incid_h_t);
+    end_hosp_t = calc_hosp_end_t_rng(N, los_mean, incid_h_t);
     
     int<lower=0> max_end_hosp; 
     max_end_hosp = max(end_hosp_t);
@@ -98,9 +88,6 @@ transformed parameters {
             census_h_new[i] = 0;
         }
     }
-}
-
-//transformed data {
     // create a new census_h_new from census_h that is the same length as the calculated census_h_calc
     // fill in the values of census_h_new that are greater than the length of census_h with 0
     // this is to make sure that the two arrays are the same length
@@ -122,7 +109,22 @@ transformed parameters {
             //census_h_new[i] = 0;
         //}
     //}
-//}
+}
+
+parameters {
+    real<lower=0> los_mean;  // Length of stay parameter to optimize
+}
+
+// *check what goes in the transformed parameters vs transformed data
+// (Transformed) Parameters cannot be integers.
+transformed parameters {
+    
+    //array[T] int<lower=0> census_h_calc;
+    real<lower=0> census_h_calc[T2]; // list of hospitalizations
+    census_h_calc = covidhosp_census_funct(N, T2, incid_h_t, end_hosp_t); // list of hospitalizations
+    //census_h_calc = covidhosp_census_funct(N, T, los_mean, incid_h_t); // list of hospitalizations
+    
+}
 
 model{
     
