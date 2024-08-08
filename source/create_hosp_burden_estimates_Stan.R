@@ -77,6 +77,7 @@ create_incidH_df(data = covid_HHS_data_states_lag %>% dplyr::select(-total_hosp,
 # set up data for Stan ----------------------------------------
 
 covid_incidH_data_MD <- covid_incidH_data_MD %>% 
+  filter(date != max(date)) %>% # remove most recent date to account for lag
   arrange(date) %>%
   mutate(incid_h_t = row_number()) %>% # convert date to numeric
   mutate(incidH = if_else(is.na(incidH), 0, incidH)) # replace NAs with 0
@@ -85,7 +86,7 @@ covid_incidH_data_MD_long <- covid_incidH_data_MD %>%
 
 N <- sum(covid_incidH_data_MD$incidH)
 incid_h_t <- covid_incidH_data_MD_long$incid_h_t
-census_h <- c(covid_totalHosp_data_MD$total_hosp, rep(0, 100))
+census_h <- c((covid_totalHosp_data_MD %>% filter(date != max(date)))$total_hosp, rep(0, 100))
 T <- length(census_h)
 
 los_prior <- 5
