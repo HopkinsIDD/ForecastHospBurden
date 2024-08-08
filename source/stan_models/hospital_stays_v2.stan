@@ -64,6 +64,7 @@ data {
 
 
 transformed data {
+    
     //array[N] int<lower=0> end_hosp_t; // individual last day of hospitalization
     int<lower=0> end_hosp_t[N]; // individual last day of hospitalization
     end_hosp_t = calc_hosp_end_t_rng(N, los_mean, incid_h_t);
@@ -129,7 +130,7 @@ transformed parameters {
 model{
     
     // probably need to add a prior on los_mean
-    
+
     los_mean ~ normal(los_prior, 2); // prior on length of stay
     target += neg_binomial_lpmf(census_h_new | census_h_calc, 0.5); // prior on length of stay
     

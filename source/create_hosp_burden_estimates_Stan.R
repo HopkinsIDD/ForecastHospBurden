@@ -62,6 +62,12 @@ covid_HHS_data_states <- arrow::read_parquet(opt$gt_data_path) %>%
 ## incidH_prior_day values are moved back one day and add to new column incidH
 covid_HHS_data_states_lag <- create_incidH_lag(covid_HHS_data_states) 
 
+# make sure there are not missing dates
+covid_HHS_data_states_lag <- covid_HHS_data_states_lag %>% 
+    full_join(expand_grid(state = unique(covid_HHS_data_states$state), 
+                          date = lubridate::as_date(min(covid_HHS_data_states$date):max(covid_HHS_data_states$date))), 
+              by = c("state", "date"))
+
 # Create dataframes for each state with Hospital burden data 
 create_totalH_df(data = covid_HHS_data_states_lag %>% dplyr::select(-incidH, -incidH_prior_day), state) 
 
@@ -72,14 +78,16 @@ create_incidH_df(data = covid_HHS_data_states_lag %>% dplyr::select(-total_hosp,
 
 covid_incidH_data_MD <- covid_incidH_data_MD %>% 
   arrange(date) %>%
-  mutate(incid_h_t = row_number()) # convert date to numeric
+  mutate(incid_h_t = row_number()) %>% # convert date to numeric
+  mutate(incidH = if_else(is.na(incidH), 0, incidH)) # replace NAs with 0
 covid_incidH_data_MD_long <- covid_incidH_data_MD %>% 
   uncount(incidH) 
 
-T <- length(covid_incidH_data_MD$date)
 N <- sum(covid_incidH_data_MD$incidH)
 incid_h_t <- covid_incidH_data_MD_long$incid_h_t
-census_h <- covid_totalHosp_data_MD$total_hosp
+census_h <- c(covid_totalHosp_data_MD$total_hosp, rep(0, 100))
+T <- length(census_h)
+
 los_prior <- 5
 
 stan_data <- list(
@@ -93,7 +101,13 @@ stan_data <- list(
 
 # Compile the Stan model ------------------------------
 library(rstan)
-fit1 <- stan(file = "source/stan_models/hospital_stays_v2.stan", data = stan_data)
+
+stan_model_file <- "source/stan_models/hospital_stays_v3.stan"
+
+ret <- rstan::stanc(stan_model_file) # Check Stan file
+fit1test <- stan(file = stan_model_file, data = stan_data, iter = 100, chains = 2)
+
+fit1 <- stan(file = stan_model_file, data = stan_data)
 
 
 df = covid_incidH_data_MD
