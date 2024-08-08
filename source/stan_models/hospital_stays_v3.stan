@@ -2,38 +2,49 @@
 functions {
     
     // generate hospital stays for N patients
-    int num_matches(int[] x, int[] y, int a){
+    int num_matches(real[] x, real[] y, int a){
         int n = 0;
+        real x_;
+        real y_;
         for (i in 1:size(x)){
+                    x_ = x[i];
+                    y_ = y[i];
             if (a >= x[i] && a <= y[i]){
                 n += 1;
             }
         }
         return n;
     }
+    
+    //     // update function name so rng is allowed in the function    
+    // int[] calc_hosp_end_t_rng(int N, real los_mean, int[] incid_h_t){ 
+    //     
+    //     //int[N] int<lower=0> end_hosp_t; // individual last day of hospitalization
+    //     int end_hosp_t[N]; // individual last day of hospitalization, can't use a lower here? 
+    //     for (n in 1:N) {
+    //         int los_calc;
+    //         los_calc = neg_binomial_rng(los_mean, 0.5);
+    //         end_hosp_t[n] = los_calc + incid_h_t[n] - 1; 
+    //     }
+    //     return end_hosp_t;
+    // }
 }
 
 data {
     int<lower=0> T;                // Number of dates  -- come back to this to make sure it matched the generated dates
     int<lower=0> N;                // Number of obs hospitalizations
     //array[N] int<lower=0> incid_h_t; // individual's day of incident hospitalization 
-    int<lower=0> incid_h_t[N]; // individual's day of incident hospitalization
+    array[N] real<lower=0> incid_h_t; // individual's day of incident hospitalization
     //array[T] int<lower=0> census_h; // census hosp
-    int<lower=0> census_h[T]; // census hosp
-    int<lower=0> los_prior; 
+    vector<lower=0>[T] census_h; // census hosp
+    real<lower=0> los_prior; 
     
 }
 
 
 transformed data {
     
-    // int<lower=0> end_hosp_t[N]; // individual last day of hospitalization
-    // for (n in 1:N) {
-    //     int los_calc;
-    //     los_calc = neg_binomial_rng(los_mean, 0.5);
-    //     end_hosp_t[n] = los_calc + incid_h_t[n] - 1; 
-    // }
-    // 
+
 }
 
 parameters {
@@ -46,25 +57,27 @@ parameters {
 // (Transformed) Parameters cannot be integers.
 transformed parameters {
     
-    vector<lower=0>[T] end_hosp_t; // individual last day of hospitalization
-    for (n in 1:N) {
-        int los_calc;
-        los_calc = neg_binomial_rng(los_mean, 0.5);
-        end_hosp_t[n] = los_calc + incid_h_t[n] - 1; 
-    }
-    
-    vector<lower=0>[T] census_h_calc; // list of census days calculated
+    real<lower=0> neg_binom_alpha;
+    vector<lower=0>[N] los_indiv;
     // census_h_calc = covidhosp_census_funct(N, T, incid_h_t, end_hosp_t); // list of hospitalizations
+    array[N] real<lower=0> end_hosp_t; // individual last day of hospitalization
+    array[T] real<lower=0> census_h_calc; // list of census days calculated
+    end_hosp_t = incid_h_t + los_indiv - 1;
     for (i in 1:T) {
         census_h_calc[i] = num_matches(incid_h_t, end_hosp_t, i);
     }
+
+    neg_binom_alpha = los_mean * 0.5;
 }
 
 model{
     
     // probably need to add a prior on los_mean
     los_mean ~ normal(los_prior, 2); // prior on length of stay
-    target += neg_binomial_lpmf(census_h | census_h_calc, 0.5); // prior on length of stay
+    // los_indiv ~ poisson(los_mean, 0.5); // prior on length of stay
+    los_indiv ~ neg_binomial(neg_binom_alpha, 0.5); // prior on length of stay
+
+    target += normal(census_h | census_h_calc, 0.5); // prior on length of stay
     // census_h ~ normal(census_h_calc, 1); // prior on length of stay
 }
 
