@@ -103,7 +103,7 @@ stan_data <- list(
 # Compile the Stan model ------------------------------
 library(rstan)
 
-stan_model_file <- "source/stan_models/hospital_stays_v3.stan"
+stan_model_file <- "source/stan_models/hospital_stays_v4.stan"
 
 ret <- rstan::stanc(stan_model_file) # Check Stan file
 fit1test <- stan(file = stan_model_file, data = stan_data, iter = 100, chains = 2)
