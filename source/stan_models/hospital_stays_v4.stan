@@ -15,19 +15,7 @@ functions {
         }
         return n;
     }
-    
-    //     // update function name so rng is allowed in the function    
-    // int[] calc_hosp_end_t_rng(int N, real los_mean, int[] incid_h_t){ 
-    //     
-    //     //int[N] int<lower=0> end_hosp_t; // individual last day of hospitalization
-    //     int end_hosp_t[N]; // individual last day of hospitalization, can't use a lower here? 
-    //     for (n in 1:N) {
-    //         int los_calc;
-    //         los_calc = neg_binomial_rng(los_mean, 0.5);
-    //         end_hosp_t[n] = los_calc + incid_h_t[n] - 1; 
-    //     }
-    //     return end_hosp_t;
-    // }
+
 }
 
 data {
@@ -61,7 +49,7 @@ transformed parameters {
     
     real<lower=0> neg_binom_alpha;
     //array[N] real<lower=0> los_indiv; 
-    vector<lower=0>[N] los_indiv;
+    int<lower=0> los_indiv[N];
     // census_h_calc = covidhosp_census_funct(N, T, incid_h_t, end_hosp_t); // list of hospitalizations
     array[N] real<lower=0> end_hosp_t; // individual last day of hospitalization
     array[T] real<lower=0> census_h_calc; // list of census days calculated
@@ -81,10 +69,10 @@ model{
     // probably need to add a prior on los_mean
     los_mean ~ normal(los_prior, 2); // prior on length of stay
     // los_indiv ~ poisson(los_mean, 0.5); // prior on length of stay
-    //los_indiv ~ neg_binomial(neg_binom_alpha, 0.5); // prior on length of stay
-    los_indiv ~ gamma(neg_binom_alpha, 0.5); // gamma for now to allow continious value
+    los_indiv ~ neg_binomial(neg_binom_alpha, 0.5); // prior on length of stay
+    //los_indiv ~ gamma(neg_binom_alpha, 0.5); // gamma for now to allow continious value
 
-    target += normal_lpdf(census_h | census_h_calc, 0.5); // prior on length of stay
+    target += normal(census_h | census_h_calc, 0.5); // prior on length of stay
     // census_h ~ normal(census_h_calc, 1); // prior on length of stay
 }
 

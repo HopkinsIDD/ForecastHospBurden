@@ -103,13 +103,18 @@ stan_data <- list(
 # Compile the Stan model ------------------------------
 library(rstan)
 
-stan_model_file <- "source/stan_models/hospital_stays_v4.stan"
+stan_model_file <- "source/stan_models/hospital_stays_v4.2.stan"
 
 ret <- rstan::stanc(stan_model_file) # Check Stan file
-fit1test <- stan(file = stan_model_file, data = stan_data, iter = 100, chains = 2)
+fit1test <- stan(file = stan_model_file, data = stan_data, iter = 100, chains = 1)
+traceplot(fit1test)
 
-
-
+fit1test2 <- stan(
+  file = stan_model_file,
+  data = stan_data,
+  iter = 2000,        
+  warmup = 1000,     
+  chains = 4)
 
 fit1 <- stan(file = stan_model_file, data = stan_data)
 

@@ -27,27 +27,6 @@ source("source/data_setup_source.R")
 opt <- list()
 opt$gt_data_path <- "data/US_wide_data/COVID-19_Reported_Patient_Impact_and_Hospital_Capacity_by_State_Timeseries_All_States_06-07-2024.parquet"
 
-# estimate hospital stays with stan ----------------------------
-# covidhosp_stay_funct <- function(n, los = 5) {
-#   rnbinom(n = n, size = los, prob = 0.5) 
-# }
-# Compile the Stan model
-# create result from sampling, and then sample length of stay 
-
-# comment out stan code 
-# stan_code <- "source/stan_models/hospital_stays.stan"
-# stan_model <- stan_model(file = stan_code)
-# 
-# # Specify number of patients
-# N <- 100
-# 
-# # Specify length of stay parameter (mean length of stay)
-# los <- 5
-# 
-# # Generate simulated hospital stays
-# sim_data <- sampling(stan_model, data = list(N = N), chains = 1, iter = 1, warmup = 0)
-
-
 # read in data, define total_hosp, incidH_prior_day
 covid_HHS_data_states <- arrow::read_parquet(opt$gt_data_path) %>% 
   mutate(total_hosp = total_adult_patients_hospitalized_confirmed_covid + total_pediatric_patients_hospitalized_confirmed_covid,
@@ -91,27 +70,6 @@ T <- length(census_h)
 
 los_prior <- 5
 
-stan_data <- list(
-  T = T,      # Number of dates
-  N = N,      # Number of observed *incident* hospitalizations over time
-  incid_h_t = incid_h_t,      # individual's day of incident hospitalization 
-  census_h = census_h,         # Array of census (total) hospitalizations
-  los_prior = los_prior       # Prior for length of stay
-)
-
-# translate stan code into R --------------
-# data {
-#   int<lower=0> T;                // Number of dates  -- come back to this to make sure it matched the generated dates
-#   int<lower=0> N;                // Number of obs hospitalizations
-#   //array[N] int<lower=0> incid_h_t; // individual's day of incident hospitalization 
-#   vector<lower=0>[N] incid_h_t;
-#   //array[N] real<lower=0> incid_h_t; // individual's day of incident hospitalization
-#   //array[T] int<lower=0> census_h; // census hosp
-#   vector<lower=0>[T] census_h; // census hosp
-#   real<lower=0> los_prior; 
-#   
-# }
-
 # parameters ------------------------------
 los_mean <- 5
 census_h_calc <- rep(0, T)
@@ -120,6 +78,7 @@ census_h_calc <- rep(0, T)
 #   // vector<lower=0>[T] census_h_calc; // list of census days calculated
 #   
 # }
+
 # functions ------------------------------
 num_matches <- function(x, y, a){
   n <- 0
@@ -137,40 +96,29 @@ num_matches <- function(x, y, a){
   
 }
 
-calc_hosp_end_t_rng <- function(N, los_mean, incid_h_t){
-  end_hosp_t <- rep(0, N)
-  for(n in 1:N){
-    los_calc <- rnbinom(n = 1, size = los_mean, prob = 0.5)
-    end_hosp_t[n] <- los_calc + incid_h_t[n] - 1
-  }
-
-  return(end_hosp_t)
-
-}
-
-
-# transformed data ------------------------------
-#empty
 
 # transformed parameters ------------------------------
 
 neg_binom_alpha <- los_mean * 0.5
-los_indiv <- gamma_rng(neg_binom_alpha, 0.5, N)  #// individual length of stay
-
-for (i in 1:N) {
-  end_hosp_t[i] = incid_h_t[i] + los_indiv[i] - 1
-}
+# create LOS est for each indv 
+los_indiv <- rnbinom(n = N, size = neg_binom_alpha, prob = 0.5)  #// individual length of stay
+los_indiv
+end_hosp_t = incid_h_t + los_indiv - 1
+census_h_calc = rep(0, T)
 for (i in 1:T) {
   census_h_calc[i] = num_matches(incid_h_t, end_hosp_t, i)
 }
+
+#think how to validate the estimate.. how many days until the census hosp reaches an appropriate number? 
+
+# transformed data ------------------------------
+#empty
 
 # model ------------------------------
 # los_mean ~ normal(los_prior, 2); // prior on length of stay
 # los_indiv ~ gamma(neg_binom_alpha, 0.5); // gamma for now to allow continious value
 
+# with census_h_cal estimate what value of LOS best fits the data given census_h
 #target += normal_lpdf(census_h | census_h_calc, 0.5); // prior on length of stay
  
-
-
-
 
