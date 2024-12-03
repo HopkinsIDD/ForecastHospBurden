@@ -76,34 +76,9 @@ create_incidH_df(data = covid_HHS_data_states_lag %>% dplyr::select(-total_hosp,
 
 # set up data for Stan ----------------------------------------
 
-covid_incidH_data_MD <- covid_incidH_data_MD %>% 
-  filter(date != max(date)) %>% # remove most recent date to account for lag
-  arrange(date) %>%
-  mutate(incid_h_t = row_number()) %>% # convert date to numeric
-  mutate(incidH = if_else(is.na(incidH), 0, incidH)) # replace NAs with 0
-covid_incidH_data_MD_long <- covid_incidH_data_MD %>% 
-  uncount(incidH) 
-
-N <- sum(covid_incidH_data_MD$incidH)
-incid_h_t <- covid_incidH_data_MD_long$incid_h_t
-census_h <- c((covid_totalHosp_data_MD %>% filter(date != max(date)))$total_hosp, rep(0, 100))
-T <- length(census_h)
-
-los_prior <- 5
-
-stan_data <- list(
-  T = T,      # Number of dates
-  N = N,      # Number of observed *incident* hospitalizations over time
-  incid_h_t = incid_h_t,      # individual's day of incident hospitalization 
-  census_h = census_h,         # Array of census (total) hospitalizations
-  los_prior = los_prior       # Prior for length of stay
-  )
 
 
-# Compile the Stan model ------------------------------
-library(rstan)
-
-stan_model_file <- "source/stan_models/hospital_stays_v4.2.stan"
+stan_model_file <- "source/stan_models/hospital_stays_v4.stan"
 
 ret <- rstan::stanc(stan_model_file) # Check Stan file
 fit1test <- stan(file = stan_model_file, data = stan_data, iter = 100, chains = 1)
@@ -112,16 +87,17 @@ traceplot(fit1test)
 fit1test2 <- stan(
   file = stan_model_file,
   data = stan_data,
-  iter = 2000,        
-  warmup = 1000,     
-  chains = 4)
-
+  iter = 500,        
+  warmup = 100,     
+  chains = 2)
 fit1 <- stan(file = stan_model_file, data = stan_data)
 
 
 df = covid_incidH_data_MD
 incidH = covid_incidH_data_MD$incidH
 total_hosp = covid_totalHosp_data_MD$total_hosp
+
+# generated quantities doesn't do inference, just creates outputs 
 
 # Prepare data for Stan
 data_stan <- list(
