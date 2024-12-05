@@ -398,4 +398,78 @@ create_optimize_totalHosp_data_timevarying <- function(parent_data, los_opt_by_s
   return(combined_df)
 }
 
+# source functions for FORECASTS ------
 
+create_curr_hosp_forecast_quantiles <- function(data_burden){
+  #data_burden <- expected_list %>% bind_rows()
+  new_data_burden <- data_burden %>%
+    bind_rows() %>%
+    as_tibble() %>%
+    dplyr::select(-admit_date, -incidH) %>% 
+    #group_by(across(-c(horizon, target_end_date))) %>%
+    group_by(hosp_dates, quantile) %>%
+    summarise(curr_hosp = length(hosp_dates)) %>%
+    ungroup()
+  return(new_data_burden)
+}
+clean_expected_forecast <- function(expected){
+  expected <- expected %>%
+    rename(total_hosp_estimate = curr_hosp,
+           date = hosp_dates) %>%
+    select(date, total_hosp_estimate, quantile)
+  
+  return(expected)
+}
+create_optimize_totalHosp_data_timevarying_forecast <- function(parent_data) {
+  #parent_data <- forecast_hosp_23_24
+  states_list <- unique(parent_data$abbreviation)
+  combined_list <- list()
+  
+  #state_abbv <- states_list[1]
+  
+  for (state_abbv in states_list) {
+    print(state_abbv) # Progress tracking
+    # Filter data for the current state
+    state_data <- parent_data %>% filter(abbreviation == state_abbv)
+    
+    # Retrieve LOS values for the state
+    los_state_list <- state_data$optimized_los
+    
+    if (length(los_state_list) == nrow(state_data)) { # Ensure LOS values match data rows
+      # Generate expected hospitalization data
+      expected_list <- create_hosp_dates_timevarying(state_data, los_vector = los_state_list)
+      #expecteddf <- bind_rows(expected_list)
+      #expected <- create_curr_hosp_forecast(data_burden = expected_list)
+      expected <- create_curr_hosp_forecast_quantiles(data_burden = expected_list)
+      #expected <- clean_expected(expected)
+      expected <- clean_expected_forecast(expected)
+      
+      # Fetch observed data dynamically
+      dynamic_totalHosp_name <- paste0("covid_totalHosp_data_", state_abbv)
+      
+      if (exists(dynamic_totalHosp_name, envir = .GlobalEnv)) {
+        observed <- get(dynamic_totalHosp_name)
+        
+        # Combine observed and expected data
+        combined <- inner_join(observed, expected, by = "date") %>%
+          dplyr::select(state, date, total_hosp, total_hosp_estimate, quantile)%>%
+          mutate(
+            absolute_difference = abs(total_hosp - total_hosp_estimate),
+            difference = total_hosp - total_hosp_estimate,
+            relative_difference = total_hosp_estimate / total_hosp
+            #optimized_los_value = los_state_list # Add LOS values to the dataframe
+          )
+        
+        combined_list[[state_abbv]] <- combined
+      } else {
+        print(paste("Data not found for:", dynamic_totalHosp_name))
+      }
+    } else {
+      print(paste("Mismatch in LOS values for state:", state_abbv))
+    }
+  }
+  
+  # Combine the results into a single dataframe
+  combined_df <- do.call(rbind, combined_list)
+  return(combined_df)
+}
