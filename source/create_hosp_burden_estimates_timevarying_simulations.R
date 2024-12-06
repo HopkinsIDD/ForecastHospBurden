@@ -221,7 +221,7 @@ los_opt_by_state_season <- read_csv("data/US_wide_data/LOS_Optimized_by_AllState
 covid_HHS_data_states_lagtemp2 <- covid_HHS_data_states_lagtemp %>% 
   left_join(los_opt_by_state_season, by = c("state" = "state", "year_szn" = "year_szn")) 
 
-simu_create_optimize_totalHosp_data_timevarying <- function(parent_data, los_opt_by_state_season, n_simulations = 1) {
+simu_create_optimize_totalHosp_data_timevarying <- function(parent_data, los_opt_by_state_season, n_simulations = 100) {
   states_list <- unique(parent_data$state)
   combined_list <- list()
   
@@ -276,7 +276,41 @@ simu_create_optimize_totalHosp_data_timevarying <- function(parent_data, los_opt
 
 optimized_data <- simu_create_optimize_totalHosp_data_timevarying(parent_data = covid_HHS_data_states_lagtemp2, los_opt_by_state_season = los_opt_by_state_season)
 
-covid_joined_totalHosp_state_data <- optimized_data
+
+# Define quantile probabilities
+quantile_probs <- c(
+  0.010, 0.025, 0.050, 0.100, 0.150,
+  0.200, 0.250, 0.300, 0.350, 0.400,
+  0.450, 0.500, 0.550, 0.600, 0.650,
+  0.700, 0.750, 0.800, 0.850, 0.900,
+  0.950, 0.975, 0.990
+)
+
+calculate_quantiles <- function(data, quantile_probs) {
+  # Group by date and calculate quantiles for total_hosp_estimate
+  quantiles_by_date <- data %>%
+    group_by(state, date) %>%
+    summarise(
+      total_hosp_quantiles = list(quantile(total_hosp_estimate, probs = quantile_probs, na.rm = TRUE))
+    ) %>%
+    unnest_wider(total_hosp_quantiles, names_sep = "_") %>%
+    rename_with(
+      ~ paste0(quantile_probs), 
+      starts_with("total_hosp_quantiles_")
+    )
+  
+  return(quantiles_by_date)
+}
+
+
+# Apply the function to calculate quantiles
+quantiles_results <- calculate_quantiles(optimized_data, quantile_probs)
+
+optimized_data_all_quantiles_temp <- quantiles_results %>% left_join(optimized_data %>% select(state, date, total_hosp) %>%  distinct(), by = c("state", "date")) %>% 
+  mutate(n_simu = 100)
+
+
+covid_joined_totalHosp_state_data <- optimized_data_all_quantiles_temp
 
 # Write Final files for analysis ----------------
 covid_HHS_data <- arrow::read_parquet(opt$gt_data_path) %>% 
@@ -299,5 +333,5 @@ covid_joined_totalHosp_state_data <-
 covid_joined_totalHosp_state_data_los <- inner_join(covid_joined_totalHosp_state_data, los_opt_by_state_season, by = c("state", "year_szn"))
 
 covid_joined_totalHosp_state_data_los_demographic <- left_join(covid_joined_totalHosp_state_data_los, covid_HHS_data, c("state", "date"))
-write_parquet(covid_joined_totalHosp_state_data_los_demographic, "data/US_wide_data/estimated_hospitalizations_data/Obs_Exp_totalHosp_daily_TIMEVARYING_simulations_100.parquet")
+write_parquet(covid_joined_totalHosp_state_data_los_demographic, "data/US_wide_data/estimated_hospitalizations_data/Obs_Exp_totalHosp_daily_TIMEVARYING_simulations_100_quantiles.parquet")
 
