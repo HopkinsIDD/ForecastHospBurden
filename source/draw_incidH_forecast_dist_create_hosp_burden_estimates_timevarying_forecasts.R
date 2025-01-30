@@ -134,7 +134,9 @@ forecast_hosp_MD_7_all_dates_horizon <- forecast_hosp %>%
 forecast_hosp_all_dates_horizon <- forecast_hosp %>%
   filter(location_name != "United States",
          type == "quantile") %>%
-  select(location_name, abbreviation, horizon, forecast_date, target_end_date, value, quantile, type)
+  mutate(horizon = as.numeric(horizon)) %>%
+  select(location_name, abbreviation, horizon, forecast_date, target_end_date, value, quantile, type) %>% 
+  filter(horizon <= 7)
 
 unique_dates <- unique(forecast_hosp_all_dates_horizon$target_end_date)
 unique_horizons <- unique(forecast_hosp_all_dates_horizon$horizon)
@@ -190,7 +192,7 @@ for (state in unique_states) {
   # Append to the main data frame for all states
   all_states_samples <- rbind(all_states_samples, state_combined)
 }
-write_parquet(all_states_samples, "data/US_wide_data/forecast_hosp_all_dates_horizon_sampled_incidH_from_quantile.parquet")
+write_parquet(all_states_samples, "data/US_wide_data/forecast_hosp_all_dates_horizon_sampled_incidH_from_quantile_01292025.parquet")
 
 forecast_hosp_MD_samples <- all_states_samples
 # Create hospitalization burden estimates using LOS values from optimization ---------
