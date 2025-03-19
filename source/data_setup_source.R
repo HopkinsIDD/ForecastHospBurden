@@ -55,7 +55,8 @@ create_incidH_df <- function(data, state){
 
 # create functions for sampling hospitalization duration 
 covidhosp_stay_funct <- function(n, los = 5) {
-  rpois(n = n, lambda = los) 
+  #rpois(n = n, lambda = los) 
+  rnbinom(n = n, size = los, prob = 0.5)
 }
 
 burden_est_funct <- function(incidH, date, hospstayfunct = covidhosp_stay_funct, los = 5){
@@ -326,7 +327,7 @@ create_hosp_dates_timevarying <- function(data, los_vector) {
   if (length(los_vector) != nrow(data)) {
     stop("The length of los_vector must match the number of rows in data.")
   }
-  #data <- state_data 
+  #data <- sim_and_reported_data_join 
   #los_vector <- los_state_list
   data_burden <- list()
   

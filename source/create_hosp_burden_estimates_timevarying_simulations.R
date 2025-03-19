@@ -213,7 +213,7 @@ create_optimization_timevarying(parent_data = covid_HHS_data_states_lagtemp, opt
 
 # this take a long time to run, prints states in alphabetical in console to check progress 
 
-#write_csv(los_opt_by_state_season, "data/US_wide_data/LOS_Optimized_by_AllStates_USA_time_varying.csv")
+write_csv(los_opt_by_state_season, "data/US_wide_data/LOS_Optimized_by_AllStates_USA_time_varying_nbinom.csv")
 
 # Create hospitalization burden estimates using LOS values from optimization ---------
 los_opt_by_state_season <- read_csv("data/US_wide_data/LOS_Optimized_by_AllStates_USA_time_varying.csv")
