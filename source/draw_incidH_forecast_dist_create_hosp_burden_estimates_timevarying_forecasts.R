@@ -135,8 +135,8 @@ forecast_hosp_all_dates_horizon <- forecast_hosp %>%
   filter(location_name != "United States",
          type == "quantile") %>%
   mutate(horizon = as.numeric(horizon)) %>%
-  select(location_name, abbreviation, horizon, forecast_date, target_end_date, value, quantile, type) %>% 
-  filter(horizon <= 7)
+  select(location_name, abbreviation, horizon, forecast_date, target_end_date, value, quantile, type) #%>% 
+  #filter(horizon <= 7)
 
 unique_dates <- unique(forecast_hosp_all_dates_horizon$target_end_date)
 unique_horizons <- unique(forecast_hosp_all_dates_horizon$horizon)
@@ -213,7 +213,7 @@ forecast_hosp_MD_samples_los <- forecast_hosp_MD_samples %>%
   select(-adjusted_year) %>% 
   left_join(los_opt_by_state_season_prior, by = c("abbreviation" = "state", "year_szn" = "year_szn")) %>% 
   left_join(los_opt_by_state_season, by = c("abbreviation" = "state", "year_szn" = "year_szn")) %>% 
-  filter(horizon <= 7) %>% 
+  #filter(horizon <= 7) %>% 
   mutate(incidH = sample,
          date = target_end_date,
          los_difference = optimized_los - optimized_los_prior,
@@ -303,14 +303,24 @@ create_optimize_totalHosp_data_timevarying_forecast_simulations <- function(pare
         #print(paste("Processing date:", as.Date(origin_date)))
         #origin_date <- as.Date("2023-10-02")
         #origin_date <- as.Date("2024-04-22")
+        #origin_date <- as.Date("2023-09-04")
         
         # need to make an adjustment if origin_date is earliest date to backfill 
+        
         sim_data_origin <- sim_data %>% 
           filter(forecast_date <= origin_date & date >= origin_date - 30) %>% 
-          mutate(incidH = if_else(forecast_date != origin_date, NA_real_, incidH))
+          mutate(
+            #origin_date = as.Date(forecast_date),  # Ensure date is properly formatted
+            incidH = if_else(forecast_date != origin_date, NA_real_, incidH)
+          ) %>%
+          group_by(target_end_date) %>%
+          arrange(desc(forecast_date)) %>%  # most recent date is first
+          slice(1) %>%  # keep the most recent row forecast per target_end_date
+          ungroup()
         
         reported_hosp_prior_month <- covid_HHS_data_states_lag %>% 
-          filter(date <= origin_date & date >= origin_date - 30) %>% 
+          filter(date <= origin_date & date >= origin_date - 30,
+                 state == state_abbv) %>% 
           mutate(abbreviation = state,
                  state = unique(sim_data_origin$state)) 
 
@@ -343,7 +353,7 @@ create_optimize_totalHosp_data_timevarying_forecast_simulations <- function(pare
               absolute_difference = abs(total_hosp - total_hosp_estimate),
               difference = total_hosp - total_hosp_estimate,
               relative_difference = total_hosp_estimate / total_hosp,
-              origin_date = as.Date(origin_date),
+               origin_date = as.Date(origin_date),
               simulation = simulation_num
             ) %>% 
             filter(forecast_date == origin_date)
@@ -367,72 +377,75 @@ create_optimize_totalHosp_data_timevarying_forecast_simulations <- function(pare
 optimized_data_all_quantiles <- create_optimize_totalHosp_data_timevarying_forecast_simulations(
    parent_data = forecast_hosp_MD_samples_los)
 
-MD_optimized_data_all_quantiles <- create_optimize_totalHosp_data_timevarying_forecast_simulations(
-  parent_data = forecast_hosp_MD_samples_los_trial)
+# MD_optimized_data_all_quantiles <- create_optimize_totalHosp_data_timevarying_forecast_simulations(
+#   parent_data = forecast_hosp_MD_samples_los_trial)
 
 #########################################################
-create_optimize_totalHosp_data_timevarying_forecast_simulations <- function(parent_data) {
-  #parent_data <- forecast_hosp_23_24
-  states_list <- unique(parent_data$abbreviation)
-  combined_list <- list()
-  
-  for (state_abbv in states_list) {
-    print(state_abbv) # Progress tracking
-    # Filter data for the current state
-    state_data <- parent_data %>% filter(abbreviation == state_abbv)
-    
-    # Retrieve unique simulation numbers
-    simulation_list <- unique(state_data$simulation)
-    
-    for (simulation_num in simulation_list) {
-      
-      # Filter data for the current simulation
-      sim_data <- state_data %>% filter(simulation == simulation_num)
-      
-      # Retrieve LOS values for the state
-      los_state_list <- sim_data$optimized_los
-      
-      if (length(los_state_list) == nrow(sim_data)) { # Ensure LOS values match data rows
-        # Generate expected hospitalization data
-        expected_list <- create_hosp_dates_timevarying(sim_data, los_vector = los_state_list)
-        expected <- create_curr_hosp_forecast(data_burden = expected_list)
-        expected <- clean_expected(expected)
-        
-        # Fetch observed data dynamically
-        dynamic_totalHosp_name <- paste0("covid_totalHosp_data_", state_abbv)
-        
-        if (exists(dynamic_totalHosp_name, envir = .GlobalEnv)) {
-          observed <- get(dynamic_totalHosp_name)
-          
-          # Combine observed and expected data
-          combined <- inner_join(observed, expected, by = "date") %>%
-            dplyr::select(state, date, total_hosp, total_hosp_estimate) %>%
-            mutate(
-              absolute_difference = abs(total_hosp - total_hosp_estimate),
-              difference = total_hosp - total_hosp_estimate,
-              relative_difference = total_hosp_estimate / total_hosp,
-              simulation = simulation_num # Add simulation number to the dataframe
-            )
-          
-          combined_list[[paste(state_abbv, simulation_num, sep = "_")]] <- combined
-        } else {
-          print(paste("Data not found for:", dynamic_totalHosp_name))
-        }
-      } else {
-        print(paste("Mismatch in LOS values for state:", state_abbv, "simulation:", simulation_num))
-      }
-    }
-  }
-  
-  # Combine the results into a single dataframe
-  combined_df <- do.call(rbind, combined_list)
-  return(combined_df)
-}
+# create_optimize_totalHosp_data_timevarying_forecast_simulations <- function(parent_data) {
+#   #parent_data <- forecast_hosp_23_24
+#   states_list <- unique(parent_data$abbreviation)
+#   combined_list <- list()
+#   
+#   for (state_abbv in states_list) {
+#     print(state_abbv) # Progress tracking
+#     # Filter data for the current state
+#     state_data <- parent_data %>% filter(abbreviation == state_abbv)
+#     
+#     # Retrieve unique simulation numbers
+#     simulation_list <- unique(state_data$simulation)
+#     
+#     for (simulation_num in simulation_list) {
+#       
+#       # Filter data for the current simulation
+#       sim_data <- state_data %>% filter(simulation == simulation_num)
+#       
+#       # Retrieve LOS values for the state
+#       los_state_list <- sim_data$optimized_los
+#       
+#       if (length(los_state_list) == nrow(sim_data)) { # Ensure LOS values match data rows
+#         # Generate expected hospitalization data
+#         expected_list <- create_hosp_dates_timevarying(sim_data, los_vector = los_state_list)
+#         expected <- create_curr_hosp_forecast(data_burden = expected_list)
+#         expected <- clean_expected(expected)
+#         
+#         # Fetch observed data dynamically
+#         dynamic_totalHosp_name <- paste0("covid_totalHosp_data_", state_abbv)
+#         
+#         if (exists(dynamic_totalHosp_name, envir = .GlobalEnv)) {
+#           observed <- get(dynamic_totalHosp_name)
+#           
+#           # Combine observed and expected data
+#           combined <- inner_join(observed, expected, by = "date") %>%
+#             dplyr::select(state, date, total_hosp, total_hosp_estimate) %>%
+#             mutate(
+#               absolute_difference = abs(total_hosp - total_hosp_estimate),
+#               difference = total_hosp - total_hosp_estimate,
+#               relative_difference = total_hosp_estimate / total_hosp,
+#               simulation = simulation_num # Add simulation number to the dataframe
+#             )
+#           
+#           combined_list[[paste(state_abbv, simulation_num, sep = "_")]] <- combined
+#         } else {
+#           print(paste("Data not found for:", dynamic_totalHosp_name))
+#         }
+#       } else {
+#         print(paste("Mismatch in LOS values for state:", state_abbv, "simulation:", simulation_num))
+#       }
+#     }
+#   }
+#   
+#   # Combine the results into a single dataframe
+#   combined_df <- do.call(rbind, combined_list)
+#   return(combined_df)
+# }
+# 
+# # Apply the function
+# optimized_data_all_quantiles <- create_optimize_totalHosp_data_timevarying_forecast_simulations(
+#   parent_data = forecast_hosp_MD_samples_los)
 
-# Apply the function
-optimized_data_all_quantiles <- create_optimize_totalHosp_data_timevarying_forecast_simulations(
-  parent_data = forecast_hosp_MD_samples_los)
-
+# combined_data_MD <- forecast_hosp_MD_samples_los %>% 
+#   filter(state == "MD",
+#          forecast_date == "2023-08-28")
 # Define quantile probabilities
 quantile_probs <- c(
   0.010, 0.025, 0.050, 0.100, 0.150,
@@ -445,7 +458,7 @@ quantile_probs <- c(
 calculate_quantiles <- function(data, quantile_probs) {
   # Group by date and calculate quantiles for total_hosp_estimate
   quantiles_by_date <- data %>%
-    group_by(state, date) %>%
+    group_by(state, date, forecast_date) %>%
     summarise(
       total_hosp_quantiles = list(quantile(total_hosp_estimate, probs = quantile_probs, na.rm = TRUE))
     ) %>%
@@ -462,10 +475,20 @@ calculate_quantiles <- function(data, quantile_probs) {
 # Apply the function to calculate quantiles
 quantiles_results <- calculate_quantiles(optimized_data_all_quantiles, quantile_probs)
 
-optimized_data_all_quantiles_temp <- quantiles_results %>% left_join(optimized_data_all_quantiles %>% select(state, date, total_hosp, origin_date, forecast_date, simulation) %>%  distinct(), by = c("state", "date")) %>% 
-  mutate(n_simu = 100)
-  
+quantile_cols <- as.character(quantile_probs)
 
+optimized_data_all_quantiles_temp <- quantiles_results %>% left_join(optimized_data_all_quantiles %>% select(state, date, total_hosp) %>%  distinct(), by = c("state", "date")) %>% 
+  mutate(n_simu = 100) 
+
+# %>%
+#   group_by(state, date, forecast_date) %>%
+#   distinct(across(all_of(quantile_cols)), .keep_all = TRUE) %>%
+#   ungroup() 
+
+optimized_data_all_quantiles_temp_MD <- quantiles_results %>% 
+  filter(state == "MD",
+         forecast_date 
+         <= "2023-10-10")
 
 covid_joined_totalHosp_state_data <- optimized_data_all_quantiles_temp %>% mutate(
   year = year(date),
@@ -487,5 +510,6 @@ covid_HHS_data <- arrow::read_parquet(opt$gt_data_path) %>%
 covid_joined_totalHosp_state_data_los <- inner_join(covid_joined_totalHosp_state_data, los_opt_by_state_season_prior, by = c("state", "year_szn"))
 
 covid_joined_totalHosp_state_data_los_demographic <- left_join(covid_joined_totalHosp_state_data_los, covid_HHS_data, c("state", "date"))
-write_parquet(covid_joined_totalHosp_state_data_los_demographic, "data/US_wide_data/estimated_hospitalizations_data/Obs_Exp_totalHosp_daily_TIMEVARYING_FORECAST_SIMU_quantiles_01302025.parquet")
+
+write_parquet(covid_joined_totalHosp_state_data_los_demographic, "data/US_wide_data/estimated_hospitalizations_data/Obs_Exp_totalHosp_daily_TIMEVARYING_FORECAST_SIMU_quantiles_14days_02112025.parquet")
 
