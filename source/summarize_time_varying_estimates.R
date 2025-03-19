@@ -1,0 +1,864 @@
+# SETUP -------------------------------------------------------------------
+
+library(dplyr)
+library(tidyr)
+library(tidycensus)
+library(tidyverse)
+library(readr)
+library(lubridate)
+library(gghighlight)
+library(arrow)
+library(Hmisc)
+library(ggplot2)
+
+### IMPORT INITIAL DATA -----------------------------------
+
+los_opt_by_state_season_timevarying <- read.csv("data/US_wide_data/LOS_Optimized_by_AllStates_USA_time_varying.csv") 
+timevarying_covid_total_hosp <- arrow::read_parquet("data/US_wide_data/estimated_hospitalizations_data/Obs_Exp_totalHosp_daily_TIMEVARYING.parquet") %>% 
+  mutate(optimization = "LOS: time varying (3 months)")
+og_covid_total_hosp <- arrow::read_parquet("data/US_wide_data/estimated_hospitalizations_data/Obs_Exp_totalHosp_daily_06242024.parquet") %>% 
+  mutate(optimization = "LOS: original (1 per state)") 
+
+forecast_covid_total_hosp <- arrow::read_parquet("data/US_wide_data/estimated_hospitalizations_data/Obs_Exp_totalHosp_daily_TIMEVARYING_FORECAST.parquet") %>% 
+  mutate(optimization = "LOS: forecast time varying (3 months)")
+
+forecast_quantile_covid_total_hosp <- arrow::read_parquet("data/US_wide_data/estimated_hospitalizations_data/Obs_Exp_totalHosp_daily_TIMEVARYING_FORECAST_QUANTILES.parquet") %>% mutate(optimization = "LOS: forecast quantiles time varying (3 months)")
+
+forecast_quantile_covid_total_hosp_simulations_archive <- arrow::read_parquet("data/US_wide_data/estimated_hospitalizations_data/Obs_Exp_totalHosp_daily_TIMEVARYING_FORECAST_SIMU_quantiles_12-23-24.parquet") %>% mutate(optimization = "Simulations Forecasted incidH, LOS: prior yr time varying (3 months)",
+                                                                                                                                                                                                           total_hosp_estimate = `0.5`)
+
+# updates 2/5/25
+forecast_quantile_covid_total_hosp_simulations <- arrow::read_parquet("data/US_wide_data/estimated_hospitalizations_data/Obs_Exp_totalHosp_daily_TIMEVARYING_FORECAST_SIMU_quantiles_14days_02112025.parquet") %>% mutate(optimization = "Simulations Forecasted incidH from forecast_date 14 days, LOS: prior yr time varying (3 months)",
+                                                                                                                                                                                                                   total_hosp_estimate = `0.5`)
+
+combined_data_MD <- forecast_quantile_covid_total_hosp_simulations %>% 
+  filter(state == "MD",
+         forecast_date == "2023-08-28")
+
+# updates 1/30/25
+forecast_quantile_covid_total_hosp_simulations <- arrow::read_parquet("data/US_wide_data/estimated_hospitalizations_data/Obs_Exp_totalHosp_daily_TIMEVARYING_FORECAST_SIMU_quantiles_01302025.parquet") %>% mutate(optimization = "Simulations Forecasted incidH from forecast_date, LOS: prior yr time varying (3 months)",
+                                                                                                                                                                                                                   total_hosp_estimate = `0.5`)
+
+timevarying_covid_total_hosp_simulations <- arrow::read_parquet("data/US_wide_data/estimated_hospitalizations_data/Obs_Exp_totalHosp_daily_TIMEVARYING_simulations_100_quantiles.parquet") %>% mutate(optimization = "Simulations Reported incidH, LOS: current time varying (3 months)", ,
+                                                                                                                                                                                                      total_hosp_estimate = `0.5`)
+
+forecast_quantile_covid_total_hosp_simulations_raw <- arrow::read_parquet("data/US_wide_data/estimated_hospitalizations_data/Obs_Exp_totalHosp_daily_TIMEVARYING_FORECAST_SIMU_.parquet") %>% mutate(optimization = "Raw Simulations Forecasted incidH, LOS: prior yr time varying (3 months)")
+
+
+
+timevarying_covid_total_hosp_simulations_raw <- arrow::read_parquet("data/US_wide_data/estimated_hospitalizations_data/Obs_Exp_totalHosp_daily_TIMEVARYING_simulations_100.parquet") %>% mutate(optimization = "Raw Simulations Reported incidH, LOS: current time varying (3 months)")
+
+
+forecast_quantile_covid_total_hosp <- forecast_quantile_covid_total_hosp %>%
+  mutate(quantile_name = case_when(
+    quantile == 0.025 ~ "Lower_95_CI",
+    quantile == 0.975 ~ "Upper_95_CI",
+    quantile == 0.100 ~ "Lower_80_CI",
+    quantile == 0.900 ~ "Upper_80_CI",
+    quantile == 0.250 ~ "Lower_50_CI",
+    quantile == 0.750 ~ "Upper_50_CI",
+    quantile == 0.500 ~ "total_hosp_estimate",
+    TRUE ~ paste0("Quantile_", quantile) 
+  ))
+
+forecast_quantile_covid_total_hosp_wide <- forecast_quantile_covid_total_hosp %>%
+  select(-c(quantile, difference, absolute_difference, relative_difference)) %>% 
+  group_by(date) %>% 
+  pivot_wider(
+    names_from = quantile_name,   # Use the new descriptive names
+    values_from = total_hosp_estimate # Specify the value column
+  )
+
+
+covid_total_hosp <- bind_rows(timevarying_covid_total_hosp, og_covid_total_hosp, forecast_covid_total_hosp, forecast_quantile_covid_total_hosp, timevarying_covid_total_hosp_simulations, forecast_quantile_covid_total_hosp_simulations)
+
+covid_total_hosp_simulations <- bind_rows(timevarying_covid_total_hosp_simulations, forecast_quantile_covid_total_hosp_simulations,  timevarying_covid_total_hosp_simulations_raw, forecast_quantile_covid_total_hosp_simulations_raw)
+
+# length of stay summary --------------------------------------
+
+# Define a function to convert year-season into a representative date
+convert_year_szn_to_date <- function(year_szn) {
+  parts <- strsplit(year_szn, "_")[[1]]
+  year <- as.numeric(parts[1])
+  season <- parts[2]
+  
+  # Assign approximate dates to each season
+  date <- switch(season,
+                 "Winter" = paste0(year, "-01-15"),
+                 "Spring" = paste0(year, "-04-15"),
+                 "Summer" = paste0(year, "-07-15"),
+                 "Fall"   = paste0(year, "-10-15"))
+  
+  as.Date(date)
+}
+
+balanced_regions <- list(
+  West = c("AK", "AZ", "CA", "CO", "HI", "ID", "MT", "NV", "NM", "OR", "UT", "WA", "WY"),
+  Midwest = c("IL", "IN", "IA", "KS", "MI", "MN", "MO", "ND", "NE", "OH", "SD", "WI"),
+  South = c("AL", "AR", "FL", "GA", "KY", "LA", "MS", "NC", "OK", "SC", "TN", "TX", "VA", "WV"),
+  Northeast = c("CT", "DE", "ME", "MD", "MA", "NH", "NJ", "NY", "PA", "RI", "VT")
+)
+
+# Add region column based on the mapping
+los_opt_by_state_season_timevarying <- los_opt_by_state_season_timevarying %>%
+  mutate(region = case_when(
+    state %in% balanced_regions$West ~ "West",
+    state %in% balanced_regions$Midwest ~ "Midwest",
+    state %in% balanced_regions$South ~ "South",
+    state %in% balanced_regions$Northeast ~ "Northeast",
+    TRUE ~ "Other" # Default for unmatched states
+  ),
+  date = as.Date(sapply(los_opt_by_state_season_timevarying$year_szn, convert_year_szn_to_date)))
+
+los_opt_by_state_season_timevarying %>%
+  ggplot(aes(x = date, y = optimized_los, color = state, group = state)) +
+  geom_line() +
+  geom_point() +
+  labs(title = "Changes in LOS Over Time by State",
+       x = "Date",
+       y = "Optimized LOS",
+       color = "State") +
+  theme_minimal() +
+  facet_wrap(~region, ncol = 1) 
+
+wide_table <- los_opt_by_state_season_timevarying %>%
+  arrange(date) %>% 
+  pivot_wider(
+    id_cols = state, # Rows
+    names_from = year_szn, # Columns
+    values_from = c(optimized_los, objective), # Values
+    names_sep = "_"
+  )
+
+# save table here 
+
+# Hospitalization estimates summary timevarying --------------------------------------
+
+state_list <- unique(covid_total_hosp_simulations$state)
+
+pdf("~/Downloads/hospitalizations_visualizations_simulations.pdf", width = 10, height = 8)
+# Loop through each state and save plots
+for (state_abbv in state_list) {
+  hosp_viz <- covid_total_hosp_simulations %>%  
+    filter(state == state_abbv) %>% 
+    ggplot(aes(x = date, y = total_hosp_estimate)) + 
+    geom_line(aes(y = total_hosp_estimate, linetype = "Estimated", color = difference)) +
+    geom_line(aes(y = total_hosp, linetype = "Observed")) +
+    labs(x = "Date", y = "Hospitalizations (Observed & Estimated)", color = "Difference (Observed - Expected)") + 
+    ggtitle(paste0(state_abbv, " Total Observed vs. Estimated Hospitalizations")) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+    scale_color_gradient2(low = "red", mid = "forestgreen", high = "red", midpoint = 0) +
+    labs(color = "Difference (Observed - Expected)") +
+    scale_linetype_manual(name = "Line Type", 
+                          values = c("solid", "dashed"), 
+                          labels = c("Estimated Hospitalizations", "Observed Hospitalizations")) +
+    facet_wrap(~optimization, scales = "free_y")
+  
+  # Print each plot to a new page in the PDF
+  print(hosp_viz)
+}
+
+# Close PDF 
+dev.off()
+
+# look at simulated date only 
+
+state_list <- unique(covid_total_hosp$state)
+
+pdf("~/Downloads/hospitalizations_visualizations.pdf", width = 10, height = 8)
+# Loop through each state and save plots
+for (state_abbv in state_list) {
+  hosp_viz <- covid_total_hosp %>%  
+    filter(state == state_abbv) %>% 
+    ggplot(aes(x = date, y = total_hosp_estimate)) + 
+    geom_line(aes(y = total_hosp, linetype = "Observed")) +
+    geom_line(aes(y = total_hosp_estimate, linetype = "Estimated", color = difference)) +
+    labs(x = "Date", y = "Hospitalizations (Observed & Estimated)", color = "Difference (Observed - Expected)") + 
+    ggtitle(paste0(state_abbv, " Total Observed vs. Estimated Hospitalizations")) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+    scale_color_gradient2(low = "red", mid = "forestgreen", high = "red", midpoint = 0) +
+    labs(color = "Difference (Observed - Expected)") +
+    scale_linetype_manual(name = "Line Type", 
+                          values = c("solid", "dashed"), 
+                          labels = c("Estimated Hospitalizations", "Observed Hospitalizations")) +
+    facet_wrap(~optimization, scales = "free_y")
+  
+  # Print each plot to a new page in the PDF
+  print(hosp_viz)
+}
+
+# Close PDF 
+dev.off()
+
+# f test to compare difference of estimates between time varying and original LOS
+standard_variance <- var(og_covid_total_hosp$difference)
+standard_variance
+timevarying_variance <- var(timevarying_covid_total_hosp$difference)
+timevarying_variance
+
+var(og_covid_total_hosp$difference, timevarying_covid_total_hosp$difference)
+
+var.test(og_covid_total_hosp$difference, timevarying_covid_total_hosp$difference) 
+
+# Hospitalization estimates summary forecast --------------------------------------
+
+state_list <- unique(covid_total_hosp$state)
+
+pdf("~/Downloads/hospitalizations_visualizations_forecast.pdf", width = 10, height = 8)
+# Loop through each state and save plots
+for (state_abbv in state_list) {
+  hosp_viz <- covid_total_hosp %>%  
+    filter(state == state_abbv,
+           optimization %in% c("LOS: forecast time varying (3 months)", "LOS: forecast quantiles time varying (3 months)")) %>% 
+    ggplot(aes(x = date, y = total_hosp_estimate)) + 
+    geom_line(aes(y = total_hosp, linetype = "Observed")) +
+    geom_line(aes(y = total_hosp_estimate, linetype = "Estimated", color = difference)) +
+    labs(x = "Date", y = "Hospitalizations (Observed & Estimated)", color = "Difference (Observed - Expected)") + 
+    ggtitle(paste0(state_abbv, " Total Observed vs. Estimated Hospitalizations")) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+    scale_color_gradient2(low = "red", mid = "forestgreen", high = "red", midpoint = 0) +
+    labs(color = "Difference (Observed - Expected)") +
+    scale_linetype_manual(name = "Line Type", 
+                          values = c("solid", "dashed"), 
+                          labels = c("Estimated Hospitalizations", "Observed Hospitalizations")) +
+    facet_wrap(~optimization, scales = "free_y")
+  
+  # Print each plot to a new page in the PDF
+  print(hosp_viz)
+}
+
+# Close PDF 
+dev.off()
+
+# add in quantiles-------------------------------
+state_list <- unique(forecast_quantile_covid_total_hosp_wide$state)
+
+pdf("~/Downloads/hospitalizations_visualizations_forecast_quantiles.pdf", width = 10, height = 8)
+# Loop through each state and save plots
+for (state_abbv in state_list) {
+  hosp_viz <- forecast_quantile_covid_total_hosp_wide %>%  
+    filter(state == state_abbv) %>% 
+    ggplot(aes(x = date)) + 
+    geom_line(aes(y = total_hosp, linetype = "Observed")) +
+    geom_line(aes(y = total_hosp_estimate, linetype = "Estimated"), color = "blue") +
+    geom_ribbon(aes(
+      ymin = Lower_95_CI, ymax = Upper_95_CI, fill = "95% CI"), alpha = 0.3) +
+    geom_ribbon(aes(
+      ymin = Lower_80_CI, ymax = Upper_80_CI, fill = "90% CI"), alpha = 0.3) +
+    geom_ribbon(aes(
+      ymin = Lower_50_CI, ymax = Upper_50_CI, fill = "50% CI"), alpha = 0.3) +
+    labs(x = "Date", 
+         y = "Hospitalizations (Observed & Estimated)") + 
+    ggtitle(paste0(state_abbv, " Total Observed vs. Estimated Hospitalizations")) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          legend.position = "bottom") + 
+    scale_linetype_manual(name = "Line Type", 
+                          values = c("dashed", "solid"), 
+                          labels = c("Estimated Hospitalizations", "Observed Hospitalizations")) +
+    scale_fill_manual(name = "Confidence Interval", 
+                      values = c("95% CI" = "lightblue", "90% CI" = "blue", "50% CI" = "darkblue"))
+  
+  # Print each plot to a new page in the PDF
+  print(hosp_viz)
+}
+
+
+# Close PDF 
+dev.off()
+
+
+# incidH forecasts and graphs ----------------
+
+library(covidHubUtils)
+library(doParallel)
+library(ggplot2)
+theme_set(theme_bw())
+
+fluszn_23_24 <- seq(as.Date("2023-09-01"), as.Date("2024-04-30"), by = "day")
+# create a list with the full name of every state in the US
+state_names <- state.name
+
+# why isnt inc hosp targets working !!!! 
+forecasts_hosp_states <- load_forecasts(
+  models = "COVIDhub-ensemble",
+  dates = fluszn_23_24,
+  date_window_size = 6,
+  locations = state_names,
+  types = c("point", "quantile"),
+  targets = inc_hosp_targets,
+  source = "zoltar",
+  verbose = FALSE,
+  as_of = NULL,
+  hub = c("US")
+)
+
+forecasts_hosp_states <- arrow::read_parquet("data/covidHubUtils_forecastData/forecast_hosp.parquet") %>% mutate(horizon = as.numeric(horizon))
+
+truth_data <- load_truth(
+  truth_source = "HealthData",
+  target_variable = "inc hosp",
+  locations = state_names
+) %>% 
+  mutate(incidH = value)
+
+# Get all column names except "incidH" and "value"
+join_by_columns <- setdiff(names(truth_data), c("incidH", "value", "model"))
+
+# Perform the left join using the selected columns
+forecasts_hosp_states <- forecasts_hosp_states %>%
+  left_join(truth_data %>% select(-value, -model), by = join_by_columns)
+
+
+forecasts_hosp_states_quantiles <- forecasts_hosp_states %>%
+  mutate(horizon = as.numeric(horizon),
+         quantile = as.numeric(quantile),
+         date = target_end_date,
+         state = abbreviation,
+    quantile_name = case_when(
+    quantile == 0.025 ~ "Lower_95_CI",
+    quantile == 0.975 ~ "Upper_95_CI",
+    quantile == 0.100 ~ "Lower_80_CI",
+    quantile == 0.900 ~ "Upper_80_CI",
+    quantile == 0.250 ~ "Lower_50_CI",
+    quantile == 0.750 ~ "Upper_50_CI",
+    quantile == 0.500 ~ "incidH_estimate"
+  )) %>% 
+  filter(quantile_name %in% c("Lower_95_CI", "Upper_95_CI", "Lower_80_CI", "Upper_80_CI", "Lower_50_CI", "Upper_50_CI", "incidH_estimate")) 
+  
+
+forecasts_hosp_US_quantiles_wide <- forecasts_hosp_states_quantiles %>%
+  select(-c(quantile)) %>% 
+  group_by(date) %>% 
+  pivot_wider(
+    names_from = quantile_name,   # Use the new descriptive names
+    values_from = value # Specify the value column
+  )
+
+state_list <- unique(forecasts_hosp_US_quantiles_wide$state)
+
+pdf("~/Downloads/hospitalizations_visualizations_IncidH_forecast_quantiles.pdf", width = 10, height = 8)
+# Loop through each state and save plots
+for (state_abbv in state_list) {
+  hosp_viz <- forecasts_hosp_US_quantiles_wide %>%  
+    filter(state == state_abbv) %>% 
+    ggplot(aes(x = date)) + 
+    geom_line(aes(y = incidH, linetype = "Observed")) +
+    geom_line(aes(y = incidH_estimate, linetype = "Estimated"), color = "darkred") +
+    geom_ribbon(aes(
+      ymin = Lower_95_CI, ymax = Upper_95_CI, fill = "95% CI"), alpha = 0.3) +
+    geom_ribbon(aes(
+      ymin = Lower_80_CI, ymax = Upper_80_CI, fill = "90% CI"), alpha = 0.3) +
+    geom_ribbon(aes(
+      ymin = Lower_50_CI, ymax = Upper_50_CI, fill = "50% CI"), alpha = 0.3) +
+    labs(x = "Date", 
+         y = "Hospitalizations (Observed & Estimated)") + 
+    ggtitle(paste0(state_abbv, " Total Observed vs. Estimated Hospitalizations")) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          legend.position = "bottom") + 
+    scale_linetype_manual(name = "Line Type", 
+                          values = c("dashed", "solid"), 
+                          labels = c("Estimated Hospitalizations", "Observed Hospitalizations")) +
+    scale_fill_manual(name = "Confidence Interval", 
+                      values = c("95% CI" = "pink", "90% CI" = "red", "50% CI" = "darkred"))
+  
+  # Print each plot to a new page in the PDF
+  print(hosp_viz)
+}
+
+
+# Close PDF 
+dev.off()
+
+# combined visualizations -----------------------------------
+
+# Combine datasets by state and date
+combined_data <- forecast_quantile_covid_total_hosp_wide %>%
+  select(state, date, total_hosp, total_hosp_estimate, Lower_95_CI, Upper_95_CI, Lower_80_CI, Upper_80_CI, Lower_50_CI, Upper_50_CI) %>%
+  left_join(
+    forecasts_hosp_US_quantiles_wide %>% 
+      select(state, date, incidH_estimate, incidH, Lower_95_CI, Upper_95_CI, Lower_80_CI, Upper_80_CI, Lower_50_CI, Upper_50_CI),
+    by = c("state", "date"),
+    suffix = c("_total", "_incidH")
+  )
+
+state_list <- unique(combined_data$state)
+
+pdf("~/Downloads/hospitalizations_combined_visualizations.pdf", width = 10, height = 8)
+# Loop through each state and save combined plots
+for (state_abbv in state_list) {
+  combined_viz <- combined_data %>%  
+    filter(state == state_abbv) %>% 
+    ggplot(aes(x = date)) + 
+    # Observed total hospitalizations
+    geom_line(aes(y = total_hosp, linetype = "Observed TotalH"), color = "black") +
+    geom_line(aes(y = total_hosp_estimate, linetype = "Forecasted TotalH"), color = "darkblue") +
+    # Forecast incidH
+    geom_line(aes(y = incidH, linetype = "Observed IncidH"), color = "black") +
+    geom_line(aes(y = incidH_estimate, linetype = "Forecasted IncidH"), color = "darkred") +
+    # Confidence intervals
+    geom_ribbon(aes(
+      ymin = Lower_95_CI_total, ymax = Upper_95_CI_total, fill = "95% CI (Total)"), alpha = 0.3) +
+    geom_ribbon(aes(
+      ymin = Lower_95_CI_incidH, ymax = Upper_95_CI_incidH, fill = "95% CI (IncidH)"), alpha = 0.3) +
+    geom_ribbon(aes(
+      ymin = Lower_50_CI_total, ymax = Upper_50_CI_total, fill = "50% CI (Total)"), alpha = 0.2) +
+    geom_ribbon(aes(
+      ymin = Lower_50_CI_incidH, ymax = Upper_50_CI_incidH, fill = "50% CI (IncidH)"), alpha = 0.2) +
+    # Labels and themes
+    labs(x = "Date", 
+         y = "Hospitalizations (Observed & Estimated)", 
+         title = paste0(state_abbv, " Combined Hospitalizations: Total and IncidH")) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          legend.position = "left") +
+    # Legends for linetype and fill
+    scale_linetype_manual(name = "Line Type", 
+                          values = c("Observed TotalH" = "solid", 
+                                     "Forecasted TotalH" = "dashed", 
+                                     "Observed IncidH" = "solid", 
+                                     "Forecasted IncidH" = "dotted")) +
+    scale_fill_manual(name = "Confidence Interval", 
+                      values = c("95% CI (Total)" = "lightblue", "95% CI (IncidH)" = "pink", 
+                                 "50% CI (Total)" = "darkblue", "50% CI (IncidH)" = "darkred"))
+  
+  # Print each plot to a new page in the PDF
+  print(combined_viz)
+  
+}
+
+# Close PDF 
+dev.off()
+
+# side by side plots 
+
+library(patchwork)  # For combining plots side by side
+
+state_list <- unique(combined_data$state)
+
+pdf("~/Downloads/hospitalizations_side_by_side_visualizations.pdf", width = 16, height = 8)
+# Loop through each state and create side-by-side plots
+for (state_abbv in state_list) {
+  # Plot for Total Hospitalizations
+  total_hosp_plot <- combined_data %>%  
+    filter(state == state_abbv) %>% 
+    ggplot(aes(x = date)) + 
+    geom_line(aes(y = total_hosp, linetype = "Observed Total"), color = "blue") +
+    geom_line(aes(y = total_hosp_estimate, linetype = "Estimated Total"), color = "darkblue") +
+    geom_ribbon(aes(
+      ymin = Lower_95_CI_total, ymax = Upper_95_CI_total, fill = "95% CI (Total)"), alpha = 0.3) +
+    geom_ribbon(aes(
+      ymin = Lower_50_CI_total, ymax = Upper_50_CI_total, fill = "50% CI (Total)"), alpha = 0.2) +
+    labs(x = "Date", 
+         y = "Hospitalizations", 
+         title = paste0(state_abbv, " Total Observed vs. Estimated Hospitalizations")) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          legend.position = "bottom") +
+    scale_linetype_manual(name = "Line Type", 
+                          values = c("solid", "dashed"), 
+                          labels = c("Observed Total Hospitalizations", "Estimated Total Hospitalizations")) +
+    scale_fill_manual(name = "Confidence Interval", 
+                      values = c("95% CI (Total)" = "lightblue", "50% CI (Total)" = "darkblue"))
+  
+  # Plot for IncidH
+  incidH_plot <- combined_data %>%  
+    filter(state == state_abbv) %>% 
+    ggplot(aes(x = date)) + 
+    geom_line(aes(y = incidH_estimate, linetype = "Estimated IncidH"), color = "darkred") +
+    geom_ribbon(aes(
+      ymin = Lower_95_CI_incidH, ymax = Upper_95_CI_incidH, fill = "95% CI (IncidH)"), alpha = 0.3) +
+    geom_ribbon(aes(
+      ymin = Lower_50_CI_incidH, ymax = Upper_50_CI_incidH, fill = "50% CI (IncidH)"), alpha = 0.2) +
+    labs(x = "Date", 
+         y = "Hospitalizations", 
+         title = paste0(state_abbv, " IncidH Estimated Hospitalizations")) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          legend.position = "bottom") +
+    scale_linetype_manual(name = "Line Type", 
+                          values = c("solid"), 
+                          labels = c("Estimated IncidH")) +
+    scale_fill_manual(name = "Confidence Interval", 
+                      values = c("95% CI (IncidH)" = "pink", "50% CI (IncidH)" = "darkred"))
+  
+  # Combine the two plots side by side
+  combined_plot <- total_hosp_plot | incidH_plot
+  
+  # Print the combined plot to the PDF
+  print(combined_plot)
+}
+
+# Close PDF
+dev.off()
+
+# simulated data graphs reported incidH -----------------
+
+timevarying_covid_total_hosp_simulations <- timevarying_covid_total_hosp_simulations %>% 
+  mutate(Lower_95_CI = `0.025`, Upper_95_CI = `0.975`, Lower_80_CI = `0.1`, Upper_80_CI = `0.9`, Lower_50_CI = `0.25`, Upper_50_CI = `0.75`)
+
+state_list <- unique(timevarying_covid_total_hosp_simulations$state)
+
+
+
+pdf("~/Downloads/hospitalizations_visualizations_reportedIncidH_simulations3.pdf", width = 10, height = 8)
+# Loop through each state and save combined plots
+for (state_abbv in state_list) {
+  # Plot for Total Hospitalizations
+  gg123 <- timevarying_covid_total_hosp_simulations %>%  
+    filter(state == state_abbv) %>% 
+    ggplot(aes(x = date)) + 
+    geom_line(aes(y = total_hosp, linetype = "Observed Total"), color = "blue") +
+    geom_line(aes(y = total_hosp_estimate, linetype = "Estimated Total"), color = "darkblue") +
+    geom_ribbon(aes(
+      ymin = Lower_95_CI, ymax = Upper_95_CI, fill = "95% CI (Total)"), alpha = 0.3) +
+    geom_ribbon(aes(
+      ymin = Lower_50_CI, ymax = Upper_50_CI, fill = "50% CI (Total)"), alpha = 0.2) +
+    labs(x = "Date", 
+         y = "Hospitalizations", 
+         title = paste0(state_abbv, " Total Observed vs. Estimated Hospitalizations")) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          legend.position = "bottom") +
+    scale_linetype_manual(name = "Line Type", 
+                          values = c("solid", "dashed"), 
+                          labels = c("Observed Total Hospitalizations", "Estimated Total Hospitalizations")) +
+    scale_fill_manual(name = "Confidence Interval", 
+                      values = c("95% CI (Total)" = "lightblue", "50% CI (Total)" = "darkblue"))
+  
+  # Print each plot to a new page in the PDF
+  print(gg123)
+  
+}
+
+# Close PDF 
+dev.off()
+
+# simulated data graphs forecasted incidH -----------------
+# USE THESE GRAPHS !!! 
+
+forecast_quantile_covid_total_hosp_simulations <- forecast_quantile_covid_total_hosp_simulations %>% 
+  mutate(Lower_95_CI = `0.025`, Upper_95_CI = `0.975`, Lower_80_CI = `0.1`, Upper_80_CI = `0.9`, Lower_50_CI = `0.25`, Upper_50_CI = `0.75`)
+
+
+# Combine datasets by state and date
+combined_data <- forecast_quantile_covid_total_hosp_simulations %>%
+  select(state, date, origin_date, total_hosp, total_hosp_estimate, Lower_95_CI, Upper_95_CI, Lower_80_CI, Upper_80_CI, Lower_50_CI, Upper_50_CI) %>%
+  left_join(
+    forecasts_hosp_US_quantiles_wide %>% 
+      select(state, date, incidH_estimate, incidH, Lower_95_CI, Upper_95_CI, Lower_80_CI, Upper_80_CI, Lower_50_CI, Upper_50_CI),
+    by = c("state", "date"),
+    suffix = c("_total", "_incidH")
+  )
+
+
+state_list <- unique(combined_data$state)
+
+pdf("~/Downloads/hospitalizations_combined_visualizations_forecast_simulations_14day_02-11-25.pdf", width = 10, height = 8)
+# Loop through each state and save combined plots
+for (state_abbv in state_list) {
+  combined_viz <- combined_data %>%  
+    filter(state == state_abbv) %>% 
+    ggplot(aes(x = date)) + 
+    # Observed total hospitalizations
+    geom_line(aes(y = total_hosp, linetype = "Observed TotalH"), color = "black") +
+    geom_line(aes(y = total_hosp_estimate, linetype = "Forecasted TotalH"), color = "darkblue") +
+    # Forecast incidH
+    geom_line(aes(y = incidH, linetype = "Observed IncidH"), color = "black") +
+    geom_line(aes(y = incidH_estimate, linetype = "Forecasted IncidH"), color = "darkred") +
+    # Confidence intervals
+    geom_ribbon(aes(
+      ymin = Lower_95_CI_total, ymax = Upper_95_CI_total, fill = "95% CI (Total)"), alpha = 0.3) +
+    geom_ribbon(aes(
+      ymin = Lower_95_CI_incidH, ymax = Upper_95_CI_incidH, fill = "95% CI (IncidH)"), alpha = 0.3) +
+    geom_ribbon(aes(
+      ymin = Lower_50_CI_total, ymax = Upper_50_CI_total, fill = "50% CI (Total)"), alpha = 0.2) +
+    geom_ribbon(aes(
+      ymin = Lower_50_CI_incidH, ymax = Upper_50_CI_incidH, fill = "50% CI (IncidH)"), alpha = 0.2) +
+    # Labels and themes
+    labs(x = "Date", 
+         y = "Hospitalizations (Observed & Estimated)", 
+         title = paste0(state_abbv, " Combined Hospitalizations: Total and IncidH")) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          legend.position = "left") +
+    # Legends for linetype and fill
+    scale_linetype_manual(name = "Line Type", 
+                          values = c("Observed TotalH" = "solid", 
+                                     "Forecasted TotalH" = "dashed", 
+                                     "Observed IncidH" = "solid", 
+                                     "Forecasted IncidH" = "dotted")) +
+    scale_fill_manual(name = "Confidence Interval", 
+                      values = c("95% CI (Total)" = "lightblue", "95% CI (IncidH)" = "pink", 
+                                 "50% CI (Total)" = "darkblue", "50% CI (IncidH)" = "darkred"))
+  
+  # Print each plot to a new page in the PDF
+  print(combined_viz)
+  
+}
+
+# Close PDF 
+dev.off()
+
+forecast_quantile_covid_total_hosp_simulations_1 <- forecast_quantile_covid_total_hosp_simulations %>% 
+  filter(forecast_date == "2023-08-28",
+         simulation ==1)
+## THIS GRAPH 
+combined_data <- forecast_quantile_covid_total_hosp_simulations %>%
+  select(state, date, forecast_date, total_hosp, total_hosp_estimate, Lower_95_CI, Upper_95_CI, Lower_80_CI, Upper_80_CI, Lower_50_CI, Upper_50_CI) %>%
+  left_join(
+    forecasts_hosp_US_quantiles_wide %>% 
+      select(state, date, forecast_date, incidH_estimate, incidH, Lower_95_CI, Upper_95_CI, Lower_80_CI, Upper_80_CI, Lower_50_CI, Upper_50_CI),
+    by = c("state", "date", "forecast_date"),
+    suffix = c("_total", "_incidH")
+  )
+
+combined_data_MD <- combined_data %>% 
+  filter(state == "MD")
+
+state_list <- unique(combined_data$state)
+pdf("~/Downloads/hospitalizations_combined_visualizations_forecast_simulations_14days_02-14-25_color.pdf", width = 10, height = 8)
+# Loop through each state and save combined plots
+#state_list <- c("MD")
+
+for (state_abbv in state_list) {
+  combined_viz <- combined_data %>%  
+    filter(state == state_abbv) %>% 
+    ggplot(aes(x = date)) + 
+    # Observed total hospitalizations
+    geom_line(aes(y = total_hosp, linetype = "Observed TotalH"), color = "black") +
+    geom_line(aes(y = total_hosp_estimate, group = as.factor(forecast_date), color = as.factor(forecast_date)), show.legend = FALSE) + #color = "darkblue"
+    geom_point(aes(y = total_hosp_estimate, group = forecast_date, color = as.factor(forecast_date)), size = 0.5, show.legend = FALSE) + #color = "darkblue"
+    scale_color_viridis_d(option = "turbo", name = "Forecast Date") +
+    # Forecast incidH
+    geom_line(aes(y = incidH, linetype = "Observed IncidH"), color = "black") +
+    geom_line(aes(y = incidH_estimate, group = forecast_date, linetype = "Forecasted IncidH"), color = "darkred") +
+    geom_point(aes(y = incidH_estimate, group = forecast_date), size = 0.3, color = "darkred") +
+    # Confidence intervals
+    geom_ribbon(aes(
+      ymin = Lower_95_CI_total, ymax = Upper_95_CI_total, fill = "95% CI (Total)"), alpha = 0.3) +
+    geom_ribbon(aes(
+      ymin = Lower_95_CI_incidH, ymax = Upper_95_CI_incidH, fill = "95% CI (IncidH)"), alpha = 0.3) +
+    geom_ribbon(aes(
+      ymin = Lower_50_CI_total, ymax = Upper_50_CI_total, 
+      fill = as.factor(forecast_date), 
+      group = as.factor(forecast_date)), alpha = 0.2) +
+    scale_fill_viridis_d(option = "turbo", name = "Forecast Date") +
+    geom_ribbon(aes(
+      ymin = Lower_50_CI_incidH, ymax = Upper_50_CI_incidH, fill = "50% CI (IncidH)"), alpha = 0.2) +
+    # Labels and themes
+    labs(x = "Date", 
+         y = "Hospitalizations (Observed & Estimated)", 
+         title = paste0(state_abbv, " Combined Hospitalizations: Total and IncidH")) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          legend.position = "left") +
+    # Legends for linetype and fill
+    scale_linetype_manual(name = "Line Type", 
+                          values = c("Observed TotalH" = "solid", 
+                                     "Forecasted TotalH" = "solid", 
+                                     "Observed IncidH" = "solid", 
+                                     "Forecasted IncidH" = "solid")) +
+    scale_fill_manual(name = "Confidence Interval", 
+                      values = c("95% CI (Total)" = "lightblue", "95% CI (IncidH)" = "pink", 
+                                 #"50% CI (Total)" = "darkblue", 
+                                 "50% CI (IncidH)" = "darkred"))
+  
+  # Print each plot to a new page in the PDF
+  print(combined_viz)
+  
+}
+
+ # Close PDF 
+dev.off()
+
+
+
+# compare old vs new extrapolated forecasts
+library(patchwork)
+
+forecast_quantile_covid_total_hosp_simulations_archive <- forecast_quantile_covid_total_hosp_simulations_archive %>% 
+  mutate(Lower_95_CI = `0.025`, Upper_95_CI = `0.975`, Lower_80_CI = `0.1`, Upper_80_CI = `0.9`, Lower_50_CI = `0.25`, Upper_50_CI = `0.75`)
+
+combined_data_archive <- forecast_quantile_covid_total_hosp_simulations_archive %>%
+  select(state, date, total_hosp, total_hosp_estimate, Lower_95_CI, Upper_95_CI, Lower_80_CI, Upper_80_CI, Lower_50_CI, Upper_50_CI) %>%
+  left_join(
+    forecasts_hosp_US_quantiles_wide %>% 
+      select(state, date, incidH_estimate, incidH, Lower_95_CI, Upper_95_CI, Lower_80_CI, Upper_80_CI, Lower_50_CI, Upper_50_CI),
+    by = c("state", "date"),
+    suffix = c("_total", "_incidH")
+  )
+
+state_list <- unique(combined_data$state)
+pdf("~/Downloads/forecast_plots_comparison_01-30-25.pdf", width = 10, height = 8)
+# Loop through each state and save combined plots
+
+for (state_abbv in state_list) {
+  combined_viz <- combined_data %>%  
+    filter(state == state_abbv) %>% 
+    ggplot(aes(x = date)) + 
+    # Observed total hospitalizations
+    geom_line(aes(y = total_hosp, linetype = "Observed TotalH"), color = "black") +
+    geom_line(aes(y = total_hosp_estimate, linetype = "Forecasted TotalH", group = as.factor(forecast_date), color = as.factor(forecast_date)), show.legend = FALSE) + #color = "darkblue"
+    geom_point(aes(y = total_hosp_estimate, linetype = "Forecasted TotalH", group = as.factor(forecast_date), color = as.factor(forecast_date)), size = 0.5, show.legend = FALSE) + #color = "darkblue"
+    scale_color_viridis_d(option = "plasma", name = "Forecast Date") +
+    # Forecast incidH
+    geom_line(aes(y = incidH, linetype = "Observed IncidH"), color = "black") +
+    geom_line(aes(y = incidH_estimate, linetype = "Forecasted IncidH"), color = "darkred") +
+    # Confidence intervals
+    geom_ribbon(aes(
+      ymin = Lower_95_CI_total, ymax = Upper_95_CI_total, fill = "95% CI (Total)"), alpha = 0.3) +
+    geom_ribbon(aes(
+      ymin = Lower_95_CI_incidH, ymax = Upper_95_CI_incidH, fill = "95% CI (IncidH)"), alpha = 0.3) +
+    geom_ribbon(aes(
+      ymin = Lower_50_CI_total, ymax = Upper_50_CI_total, fill = "50% CI (Total)"), alpha = 0.2) +
+    geom_ribbon(aes(
+      ymin = Lower_50_CI_incidH, ymax = Upper_50_CI_incidH, fill = "50% CI (IncidH)"), alpha = 0.2) +
+    # Labels and themes
+    labs(x = "Date", 
+         y = "Hospitalizations (Observed & Estimated)", 
+         title = paste0(state_abbv, "New Version Combined Hospitalizations: Total and IncidH")) +
+    theme_bw() +
+    #theme(axis.text.x = element_text(angle = 45, hjust = 1),
+    #      legend.position = "left") +
+    # Legends for linetype and fill
+    scale_linetype_manual(name = "Line Type", 
+                          values = c("Observed TotalH" = "solid", 
+                                     "Forecasted TotalH" = "solid", 
+                                     "Observed IncidH" = "solid", 
+                                     "Forecasted IncidH" = "dotted")) +
+    scale_fill_manual(name = "Confidence Interval", 
+                      values = c("95% CI (Total)" = "lightblue", "95% CI (IncidH)" = "pink", 
+                                 "50% CI (Total)" = "darkblue", "50% CI (IncidH)" = "darkred"))
+  
+  
+  combined_viz_archive <- combined_data_archive %>%  
+    filter(state == state_abbv) %>% 
+    ggplot(aes(x = date)) + 
+    # Observed total hospitalizations
+    geom_line(aes(y = total_hosp, linetype = "Observed TotalH"), color = "black") +
+    geom_line(aes(y = total_hosp_estimate, linetype = "Forecasted TotalH"), color = "darkblue") +
+    # Forecast incidH
+    geom_line(aes(y = incidH, linetype = "Observed IncidH"), color = "black") +
+    geom_line(aes(y = incidH_estimate, linetype = "Forecasted IncidH"), color = "darkred") +
+    # Confidence intervals
+    geom_ribbon(aes(
+      ymin = Lower_95_CI_total, ymax = Upper_95_CI_total, fill = "95% CI (Total)"), alpha = 0.3) +
+    geom_ribbon(aes(
+      ymin = Lower_95_CI_incidH, ymax = Upper_95_CI_incidH, fill = "95% CI (IncidH)"), alpha = 0.3) +
+    geom_ribbon(aes(
+      ymin = Lower_50_CI_total, ymax = Upper_50_CI_total, fill = "50% CI (Total)"), alpha = 0.2) +
+    geom_ribbon(aes(
+      ymin = Lower_50_CI_incidH, ymax = Upper_50_CI_incidH, fill = "50% CI (IncidH)"), alpha = 0.2) +
+    # Labels and themes
+    labs(x = "Date", 
+         y = "Hospitalizations (Observed & Estimated)", 
+         title = paste0(state_abbv, "Old Version Combined Hospitalizations: Total and IncidH")) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          legend.position = "left") +
+    # Legends for linetype and fill
+    scale_linetype_manual(name = "Line Type", 
+                          values = c("Observed TotalH" = "solid", 
+                                     "Forecasted TotalH" = "dashed", 
+                                     "Observed IncidH" = "solid", 
+                                     "Forecasted IncidH" = "dotted")) +
+    scale_fill_manual(name = "Confidence Interval", 
+                      values = c("95% CI (Total)" = "lightblue", "95% CI (IncidH)" = "pink", 
+                                 "50% CI (Total)" = "darkblue", "50% CI (IncidH)" = "darkred"))
+  
+  
+  # Combine the two plots side by side
+  combined_plot <- combined_viz_archive | combined_viz
+  
+  # Print the combined plot to the PDF
+  print(combined_plot)
+  
+  
+}
+
+# Close PDF 
+dev.off()
+
+
+
+
+
+
+# see if sampling is working of incidH forecast data -----------------
+
+all_states_samples <- arrow::read_parquet("data/US_wide_data/forecast_hosp_all_dates_horizon_sampled_incidH_from_quantile.parquet") %>% 
+  mutate(date = target_end_date,
+         state = abbreviation)
+
+all_states_samples_simu_wide <- all_states_samples %>% 
+  select(-horizon) %>% 
+  group_by(date, state) %>% 
+  pivot_wider(
+    names_from = simulation,   # Use the new descriptive names
+    values_from = sample # Specify the value column
+  ) %>% 
+  rename_with(~ paste0("simulation_", .), -c(date, state, location_name, abbreviation, forecast_date, target_end_date, type, state, date))
+
+
+# forecast_quantile_covid_total_hosp_simulations <- forecast_quantile_covid_total_hosp_simulations %>% 
+#   mutate(Lower_95_CI = `0.025`, Upper_95_CI = `0.975`, Lower_80_CI = `0.1`, Upper_80_CI = `0.9`, Lower_50_CI = `0.25`, Upper_50_CI = `0.75`)
+# 
+
+# Combine datasets by state and date
+combined_data <- all_states_samples_simu_wide %>%
+  select(-c(location_name, abbreviation, type)) %>%
+  left_join(
+    forecasts_hosp_US_quantiles_wide, #%>% 
+      #select(state, date, incidH_estimate, incidH, Lower_95_CI, Upper_95_CI, Lower_80_CI, Upper_80_CI, Lower_50_CI, Upper_50_CI),
+    by = c("state", "date"),
+    suffix = c("_sample", "_incidH")
+  )
+
+state_list <- unique(combined_data$state)
+
+pdf("~/Downloads/visualizations_sampledincidH_vs_incidH_forecast.pdf", width = 10, height = 8)
+# Loop through each state and save combined plots
+for (state_abbv in state_list) {
+  combined_viz <- combined_data %>%  
+    filter(state == state_abbv) %>% 
+    ggplot(aes(x = date)) + 
+    # Observed total hospitalizations
+    # Forecast incidH
+    geom_line(aes(y = incidH, linetype = "Observed IncidH"), color = "black") +
+    geom_line(aes(y = incidH_estimate, linetype = "Forecasted IncidH"), color = "darkred") +
+    # Confidence intervals
+    geom_ribbon(aes(
+      ymin = Lower_95_CI, ymax = Upper_95_CI, fill = "95% CI (IncidH)"), alpha = 0.3) +
+    geom_ribbon(aes(
+      ymin = Lower_50_CI, ymax = Upper_50_CI, fill = "50% CI (IncidH)"), alpha = 0.2) +
+    lapply(1:100, function(i) {
+      geom_line(aes_string(y = paste0("simulation_", i), linetype = '"Sampled IncidH"'), color = "grey")
+    }) +
+    # Labels and themes
+    labs(x = "Date", 
+         y = "Hospitalizations (Observed & Estimated)", 
+         title = paste0(state_abbv, " Combined Hospitalizations: Total and IncidH")) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          legend.position = "left") +
+    # Legends for linetype and fill
+    scale_linetype_manual(name = "Line Type", 
+                          values = c("Sampled IncidH" = "dashed", 
+                                     "Observed IncidH" = "solid", 
+                                     "Forecasted IncidH" = "dotted")) +
+    scale_fill_manual(name = "Confidence Interval", 
+                      values = c("95% CI (IncidH)" = "pink", "50% CI (IncidH)" = "darkred"))
+  
+  # Print each plot to a new page in the PDF
+  print(combined_viz)
+  
+}
+
+# Close PDF 
+dev.off()
+
