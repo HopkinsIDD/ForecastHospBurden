@@ -2,39 +2,26 @@
 functions {
     
     // generate hospital stays for N patients
-    int num_matches(real[] x, real[] y, int a){
+    int num_matches(vector[] x, vector[] y, int a){
         int n = 0;
         real x_;
         real y_;
         for (i in 1:size(x)){
                     x_ = x[i];
                     y_ = y[i];
-            if (a >= x[i] && a <= y[i]){
+            if (a >= x_ && a <= y_){
                 n += 1;
             }
         }
         return n;
     }
-    
-    //     // update function name so rng is allowed in the function    
-    // int[] calc_hosp_end_t_rng(int N, real los_mean, int[] incid_h_t){ 
-    //     
-    //     //int[N] int<lower=0> end_hosp_t; // individual last day of hospitalization
-    //     int end_hosp_t[N]; // individual last day of hospitalization, can't use a lower here? 
-    //     for (n in 1:N) {
-    //         int los_calc;
-    //         los_calc = neg_binomial_rng(los_mean, 0.5);
-    //         end_hosp_t[n] = los_calc + incid_h_t[n] - 1; 
-    //     }
-    //     return end_hosp_t;
-    // }
 }
 
 data {
     int<lower=0> T;                // Number of dates  -- come back to this to make sure it matched the generated dates
     int<lower=0> N;                // Number of obs hospitalizations
     //array[N] int<lower=0> incid_h_t; // individual's day of incident hospitalization 
-    array[N] real<lower=0> incid_h_t; // individual's day of incident hospitalization
+    vector<lower=0>[N] incid_h_t; // individual's day of incident hospitalization
     //array[T] int<lower=0> census_h; // census hosp
     vector<lower=0>[T] census_h; // census hosp
     real<lower=0> los_prior; 
@@ -60,8 +47,8 @@ transformed parameters {
     real<lower=0> neg_binom_alpha;
     vector<lower=0>[N] los_indiv;
     // census_h_calc = covidhosp_census_funct(N, T, incid_h_t, end_hosp_t); // list of hospitalizations
-    array[N] real<lower=0> end_hosp_t; // individual last day of hospitalization
-    array[T] real<lower=0> census_h_calc; // list of census days calculated
+    vector<lower=0>[N] end_hosp_t; // individual last day of hospitalization
+    vector<lower=0>[T] census_h_calc; // list of census days calculated
     end_hosp_t = incid_h_t + los_indiv - 1;
     for (i in 1:T) {
         census_h_calc[i] = num_matches(incid_h_t, end_hosp_t, i);

@@ -96,7 +96,8 @@ stan_data <- list(
   N = N,      # Number of observed *incident* hospitalizations over time
   incid_h_t = incid_h_t,      # individual's day of incident hospitalization 
   census_h = census_h,         # Array of census (total) hospitalizations
-  los_prior = los_prior       # Prior for length of stay
+  los_prior = los_prior,       # Prior for length of stay
+  los_indiv = rep(1, N)       # Individual length of stay
   )
 
 
@@ -104,10 +105,36 @@ stan_data <- list(
 library(rstan)
 
 stan_model_file <- "source/stan_models/hospital_stays_v4.2.stan"
+stan_model_file <- "source/stan_models/hospital_stays_v6.stan"
 
 ret <- rstan::stanc(stan_model_file) # Check Stan file
 fit1test <- stan(file = stan_model_file, data = stan_data, iter = 100, chains = 1)
 traceplot(fit1test)
+
+
+los_optimized <- extract(fit1test)$los_mean
+# --> super low.. does this need to be transformed? need to check the model is using the correct parameters
+# exp(los_optimized)
+# los_optimized * 2
+
+los_optimized <- extract(fit1test)$los_indiv
+fittest_output <- extract(fit1test)
+
+
+tmp <- fittest_output$census_h_calc
+head(tmp)
+as.matrix(tmp)
+
+tmp[, 1:100]
+tmp[1,]
+
+
+
+
+
+
+
+
 
 fit1test2 <- stan(
   file = stan_model_file,
