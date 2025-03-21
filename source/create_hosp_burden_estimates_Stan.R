@@ -139,16 +139,17 @@ tmp[1,]
 fit1test2 <- stan(
   file = stan_model_file,
   data = stan_data,
-  iter = 2000,        
-  warmup = 1000,     
-  chains = 4)
-
+  iter = 500,        
+  warmup = 100,     
+  chains = 2)
 fit1 <- stan(file = stan_model_file, data = stan_data)
 
 
 df = covid_incidH_data_MD
 incidH = covid_incidH_data_MD$incidH
 total_hosp = covid_totalHosp_data_MD$total_hosp
+
+# generated quantities doesn't do inference, just creates outputs 
 
 # Prepare data for Stan
 data_stan <- list(
