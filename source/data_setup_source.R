@@ -249,6 +249,7 @@ create_totalH_df_year_szn <- function(data) {
           envir = .GlobalEnv
         )
       }
+      
     }
   }
 }
@@ -306,6 +307,64 @@ create_optimization_timevarying <- function(parent_data, optimize_los) {
   
   # Save the result to the global environment
   assign("los_opt_by_state_season", los_opt_by_state_season, envir = .GlobalEnv)
+  
+  print("Optimization completed!")
+}
+
+
+create_optimization_timevarying_forecast_date <- function(parent_data, optimize_los) {
+  states_list <- unique(parent_data$state)
+  los_opt_by_state_season <- list()
+  
+  for (state in states_list) {
+    print(state) # for tracking progress
+    
+    # Filter data for the current state
+    state_data <- parent_data %>% filter(state == state)
+    forecast_date_list <- unique(state_data$forecast_date)
+    
+    for (origin_date in forecast_date_list) {
+      # Filter data for the current state and origin_date
+      filtered_data <- state_data %>% filter(forecast_date == origin_date)
+      
+      # Ensure there's data to process
+      if (nrow(filtered_data) > 0) {
+        # Construct dynamic variable names
+        dynamic_incidH_name <- paste0("covid_incidH_data_", state, "_", origin_date)
+        dynamic_totalHosp_name <- paste0("covid_totalHosp_data_", state, "_", origin_date)
+        
+        # Check if the dynamic objects exist before proceeding
+        if (exists(dynamic_incidH_name, envir = .GlobalEnv) && exists(dynamic_totalHosp_name, envir = .GlobalEnv)) {
+          data <- get(dynamic_incidH_name)
+          observed <- get(dynamic_totalHosp_name)
+          
+          # Perform optimization
+          los_range <- c(3, 15)
+          los_min <- optimize(optimize_los, los_range, 
+                              data = data, 
+                              observed = observed, 
+                              maximum = FALSE)
+          
+          # Create a results dataframe
+          state_season_df <- data.frame(
+            state = state, 
+            forecast_date = origin_date,
+            optimized_los = los_min$minimum, 
+            objective = los_min$objective
+          )
+          los_opt_by_state_forecast_date[[paste(state, origin_date, sep = "_")]] <- state_season_df
+        } else {
+          print(paste("Dynamic objects not found for:", dynamic_incidH_name, "or", dynamic_totalHosp_name))
+        }
+      }
+    }
+  }
+  
+  # Combine list of dataframes into a single dataframe
+  los_opt_by_state_forecast_date <- do.call(rbind, los_opt_by_state_forecast_date)
+  
+  # Save the result to the global environment
+  assign("los_opt_by_state_forecast_date", los_opt_by_state_forecast_date, envir = .GlobalEnv)
   
   print("Optimization completed!")
 }
@@ -473,4 +532,333 @@ create_optimize_totalHosp_data_timevarying_forecast <- function(parent_data) {
   # Combine the results into a single dataframe
   combined_df <- do.call(rbind, combined_list)
   return(combined_df)
+}
+
+# Tables and Figures ------
+# Functions for Figure 1 --------
+# Get LOS estimates for each day using the prior 90 days of data ------
+
+# create dataframes of incidH and totalH for each unique date, change from forecast date when using forecast data 
+# this is all for creating estimates with reported data for Fig1 not using any forecast data 
+
+create_incidH_df_unique_date <- function(data) {
+  states_list <- unique(data$state)
+  #forecast_date_list <- unique(forecast_data$forecast_date)
+  
+  for (abbv in states_list) {
+    #forecast_data_state <- forecast_data %>% filter(abbreviation == abbv)
+    state_origin_date <- data %>% filter(state == abbv)
+    unique_date_list <- unique(state_origin_date$date)
+    for (origin_date in unique_date_list) {
+      origin_date <- as.Date(origin_date)
+      
+      # Filter data for the current state and year_szn
+      state_origin_date_filter <- data %>% 
+        filter(state == abbv &
+                 date >= origin_date - 90 & date < origin_date)
+      
+      # Ensure there's data to process
+      if (nrow(state_origin_date_filter) > 0) {
+        #origin_date <- as.Date(origin_date)
+        # Assign the filtered data to a dynamically created variable name
+        assign(
+          paste0("covid_incidH_data_", abbv, "_", as.Date(origin_date)),
+          state_origin_date_filter,
+          envir = .GlobalEnv
+        )
+      }
+    }
+  }
+}
+
+create_totalH_df_unique_date <- function(data) {
+  # data <- covid_HHS_data_states_lagtemp_MD %>% dplyr::select(-incidH, -incidH_prior_day)
+  # forecast_data <- forecast_hosp
+  states_list <- unique(data$state)
+  #forecast_date_list <- unique(forecast_data$forecast_date)
+  
+  for (abbv in states_list) {
+    state_origin_date <- data %>% filter(state == abbv)
+    unique_date_list <- unique(state_origin_date$date)
+    
+    for (origin_date in unique_date_list) {
+      # abbv <- "MD"
+      # origin_date <- as.Date("2023-08-28")
+      # Filter data for the current state and year_szn
+      origin_date <- as.Date(origin_date)
+      state_origin_date_filter <- data %>% 
+        filter(state == abbv &
+                 date >= origin_date - 90 & date < origin_date)
+      
+      # Ensure there's data to process
+      if (nrow(state_origin_date_filter) > 0) {
+        #origin_date <- as.Date(origin_date)
+        # Assign the filtered data to a dynamically created variable name
+        assign(
+          paste0("covid_totalHosp_data_", abbv, "_", origin_date),
+          state_origin_date_filter,
+          envir = .GlobalEnv
+        )
+      }
+    }
+  }
+}
+
+create_optimization_timevarying_unique_dates <- function(parent_data, optimize_los) {
+  states_list <- unique(parent_data$state)
+  los_opt_by_state_forecast_date <- list()
+  
+  for (abbv in states_list) {
+    print(abbv) # for tracking progress
+    
+    # Filter data for the current state
+    state_data <- parent_data %>% filter(state == abbv)
+    state_date_list <- unique(state_data$date)
+    
+    for (origin_date in state_date_list) {
+      origin_date <- as.Date(origin_date)
+      print(origin_date) # for tracking progress
+      
+      # Filter data for the current state and origin_date
+      filtered_data <- state_data %>% filter(date >= origin_date - 90)
+      
+      
+      # Ensure there's data to process
+      if (nrow(filtered_data) > 0) {
+        # Construct dynamic variable names
+        dynamic_incidH_name <- paste0("covid_incidH_data_", abbv, "_", origin_date)
+        dynamic_totalHosp_name <- paste0("covid_totalHosp_data_", abbv, "_", origin_date)
+        
+        # Check if the dynamic objects exist before proceeding
+        if (exists(dynamic_incidH_name, envir = .GlobalEnv) && exists(dynamic_totalHosp_name, envir = .GlobalEnv)) {
+          data <- get(dynamic_incidH_name)
+          observed <- get(dynamic_totalHosp_name)
+          
+          # Perform optimization
+          los_range <- c(3, 15)
+          los_min <- optimize(optimize_los, los_range, 
+                              data = data, 
+                              observed = observed, 
+                              maximum = FALSE)
+          
+          # Create a results dataframe
+          state_season_df <- data.frame(
+            state = abbv, 
+            unique_date = origin_date,
+            optimized_los = los_min$minimum, 
+            objective = los_min$objective
+          )
+          los_opt_by_state_forecast_date[[paste(abbv, origin_date, sep = "_")]] <- state_season_df
+        } else {
+          print(paste("Dynamic objects not found for:", dynamic_incidH_name, "or", dynamic_totalHosp_name))
+        }
+      }
+    }
+  }
+  
+  # Combine list of dataframes into a single dataframe
+  los_opt_by_state_forecast_date <- do.call(rbind, los_opt_by_state_forecast_date)
+  
+  # Save the result to the global environment
+  assign("los_opt_by_state_unique_date", los_opt_by_state_forecast_date, envir = .GlobalEnv)
+  
+  print("Optimization completed!")
+}
+
+# Get LOS estimates for LOS Generated Each EpiWeek from past 90 days ------
+create_incidH_df_epiweek <- function(data) {
+  states_list <- unique(data$state)
+  #forecast_date_list <- unique(forecast_data$forecast_date)
+  
+  for (abbv in states_list) {
+    #forecast_data_state <- forecast_data %>% filter(abbreviation == abbv)
+    state_origin_date <- data %>% filter(state == abbv)
+    unique_epiweek_list <- unique(state_origin_date$epiweek)
+    for (selected_epiweek in unique_epiweek_list) {
+      # the origin date is the first date in the corresponding epi week
+      origin_date <- state_origin_date %>% 
+        filter(epiweek == selected_epiweek) %>% 
+        summarise(origin_date = max(date)) %>% 
+        pull(origin_date)
+      
+      origin_date <- as.Date(origin_date)
+      
+      # Filter data for the current state and year_szn
+      state_origin_date_filter <- data %>% 
+        filter(state == abbv &
+                 date >= origin_date - 90 & date < origin_date)
+      
+      # Ensure there's data to process
+      if (nrow(state_origin_date_filter) > 0) {
+        #origin_date <- as.Date(origin_date)
+        # Assign the filtered data to a dynamically created variable name
+        assign(
+          paste0("covid_incidH_data_", abbv, "_", as.Date(origin_date)),
+          state_origin_date_filter,
+          envir = .GlobalEnv
+        )
+      }
+    }
+  }
+}
+
+create_totalH_df_epiweek <- function(data) {
+  # data <- covid_HHS_data_states_lagtemp_MD %>% dplyr::select(-incidH, -incidH_prior_day)
+  # forecast_data <- forecast_hosp
+  states_list <- unique(data$state)
+  #forecast_date_list <- unique(forecast_data$forecast_date)
+  
+  for (abbv in states_list) {
+    state_origin_date <- data %>% filter(state == abbv)
+    unique_epiweek_list <- unique(state_origin_date$epiweek)
+    
+    for (selected_epiweek in unique_epiweek_list) {
+      # the origin date is the last date in the corresponding epi week
+      origin_date <- state_origin_date %>% 
+        filter(epiweek == selected_epiweek) %>% 
+        summarise(origin_date = max(date)) %>% 
+        pull(origin_date)
+      
+      origin_date <- as.Date(origin_date)
+      state_origin_date_filter <- data %>% 
+        filter(state == abbv &
+                 date >= origin_date - 90 & date < origin_date)
+      
+      # Ensure there's data to process
+      if (nrow(state_origin_date_filter) > 0) {
+        #origin_date <- as.Date(origin_date)
+        # Assign the filtered data to a dynamically created variable name
+        assign(
+          paste0("covid_totalHosp_data_", abbv, "_", origin_date),
+          state_origin_date_filter,
+          envir = .GlobalEnv
+        )
+      }
+    }
+  }
+}
+
+create_optimization_timevarying_epiweek <- function(parent_data, optimize_los) {
+  states_list <- unique(parent_data$state)
+  los_opt_by_state_forecast_date <- list()
+  
+  for (abbv in states_list) {
+    print(abbv) # for tracking progress
+    
+    # Filter data for the current state
+    state_data <- parent_data %>% filter(state == abbv)
+    unique_epiweek_list <- unique(state_data$epiweek)
+    
+    for (selected_epiweek in unique_epiweek_list) {
+      origin_date <- state_data %>% 
+        filter(epiweek == selected_epiweek) %>% 
+        summarise(origin_date = max(date)) %>% 
+        pull(origin_date)
+      
+      origin_date <- as.Date(origin_date)
+      print(origin_date) # for tracking progress
+      
+      # Filter data for the current state and origin_date
+      filtered_data <- state_data %>% filter(date >= origin_date - 90)
+      
+      
+      # Ensure there's data to process
+      if (nrow(filtered_data) > 0) {
+        # Construct dynamic variable names
+        dynamic_incidH_name <- paste0("covid_incidH_data_", abbv, "_", origin_date)
+        dynamic_totalHosp_name <- paste0("covid_totalHosp_data_", abbv, "_", origin_date)
+        
+        # Check if the dynamic objects exist before proceeding
+        if (exists(dynamic_incidH_name, envir = .GlobalEnv) && exists(dynamic_totalHosp_name, envir = .GlobalEnv)) {
+          data <- get(dynamic_incidH_name)
+          observed <- get(dynamic_totalHosp_name)
+          
+          # Perform optimization
+          los_range <- c(3, 15)
+          los_min <- optimize(optimize_los, los_range, 
+                              data = data, 
+                              observed = observed, 
+                              maximum = FALSE)
+          
+          # Create a results dataframe
+          state_season_df <- data.frame(
+            state = abbv, 
+            unique_date = origin_date,
+            optimized_los = los_min$minimum, 
+            objective = los_min$objective
+          )
+          los_opt_by_state_forecast_date[[paste(abbv, origin_date, sep = "_")]] <- state_season_df
+        } else {
+          print(paste("Dynamic objects not found for:", dynamic_incidH_name, "or", dynamic_totalHosp_name))
+        }
+      }
+    }
+  }
+  
+  # Combine list of dataframes into a single dataframe
+  los_opt_by_state_forecast_date <- do.call(rbind, los_opt_by_state_forecast_date)
+  
+  # Save the result to the global environment
+  assign("los_opt_by_state_unique_date", los_opt_by_state_forecast_date, envir = .GlobalEnv)
+  
+  print("Optimization completed!")
+}
+
+create_optimization_timevarying_by_factor <- function(parent_data, optimize_los, factor_col) {
+  states_list <- unique(parent_data$state)
+  los_opt_by_state <- list()
+  
+  for (abbv in states_list) {
+    print(abbv) # for tracking progress
+    
+    # Filter data for the current state
+    state_data <- parent_data %>% filter(state == abbv)
+    factor_list <- unique(state_data[[factor_col]])
+    
+    for (selected_factor in factor_list) {
+      state_factor_filter <- state_data %>% 
+        dplyr::filter(.data[[factor_col]] == selected_factor)
+      
+      # Ensure there's data to process
+      if (nrow(state_factor_filter) > 0) {
+        # Construct dynamic variable names
+        dynamic_incidH_name <- paste0("covid_incidH_data_", abbv, "_", selected_factor)
+        dynamic_totalHosp_name <- paste0("covid_totalHosp_data_", abbv, "_", selected_factor)
+        
+        # Check if the dynamic objects exist before proceeding
+        if (exists(dynamic_incidH_name, envir = .GlobalEnv) && exists(dynamic_totalHosp_name, envir = .GlobalEnv)) {
+          data <- get(dynamic_incidH_name)
+          observed <- get(dynamic_totalHosp_name)
+          
+          # Perform optimization
+          los_range <- c(3, 15)
+          los_min <- optimize(optimize_los, los_range, 
+                              data = data, 
+                              observed = observed, 
+                              maximum = FALSE)
+          
+          # Create a results dataframe
+          state_season_df <- data.frame(
+            state = abbv, 
+            selected_strata = selected_factor,
+            optimized_los = los_min$minimum, 
+            objective = los_min$objective
+          )
+          
+          los_opt_by_state[[paste(abbv, selected_factor, sep = "_")]] <- state_season_df
+          
+        } else {
+          print(paste("Dynamic objects not found for:", dynamic_incidH_name, "or", dynamic_totalHosp_name))
+        }
+      }
+    }
+  }
+  
+  # Combine list of dataframes into a single dataframe
+  los_opt_by_state <- do.call(rbind, los_opt_by_state)
+  
+  # Save the result to the global environment
+  assign("los_opt_by_state", los_opt_by_state, envir = .GlobalEnv)
+  
+  print("Optimization completed!")
 }
