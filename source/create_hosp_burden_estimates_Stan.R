@@ -76,13 +76,65 @@ create_incidH_df(data = covid_HHS_data_states_lag %>% dplyr::select(-total_hosp,
 
 # set up data for Stan ----------------------------------------
 
+covid_incidH_data_MD <- covid_incidH_data_MD %>% 
+  filter(date != max(date)) %>% # remove most recent date to account for lag
+  arrange(date) %>%
+  mutate(incid_h_t = row_number()) %>% # convert date to numeric
+  mutate(incidH = if_else(is.na(incidH), 0, incidH)) # replace NAs with 0
+covid_incidH_data_MD_long <- covid_incidH_data_MD %>% 
+  uncount(incidH) 
+
+N <- sum(covid_incidH_data_MD$incidH)
+incid_h_t <- covid_incidH_data_MD_long$incid_h_t
+census_h <- c((covid_totalHosp_data_MD %>% filter(date != max(date)))$total_hosp, rep(0, 100))
+T <- length(census_h)
+
+los_prior <- 5
+
+stan_data <- list(
+  T = T,      # Number of dates
+  N = N,      # Number of observed *incident* hospitalizations over time
+  incid_h_t = incid_h_t,      # individual's day of incident hospitalization 
+  census_h = census_h,         # Array of census (total) hospitalizations
+  los_prior = los_prior,       # Prior for length of stay
+  los_indiv = rep(1, N)       # Individual length of stay
+  )
 
 
-stan_model_file <- "source/stan_models/hospital_stays_v4.stan"
+# Compile the Stan model ------------------------------
+library(rstan)
+
+stan_model_file <- "source/stan_models/hospital_stays_v4.2.stan"
+stan_model_file <- "source/stan_models/hospital_stays_v6.stan"
 
 ret <- rstan::stanc(stan_model_file) # Check Stan file
 fit1test <- stan(file = stan_model_file, data = stan_data, iter = 100, chains = 1)
 traceplot(fit1test)
+
+
+los_optimized <- extract(fit1test)$los_mean
+# --> super low.. does this need to be transformed? need to check the model is using the correct parameters
+# exp(los_optimized)
+# los_optimized * 2
+
+los_optimized <- extract(fit1test)$los_indiv
+fittest_output <- extract(fit1test)
+
+
+tmp <- fittest_output$census_h_calc
+head(tmp)
+as.matrix(tmp)
+
+tmp[, 1:100]
+tmp[1,]
+
+
+
+
+
+
+
+
 
 fit1test2 <- stan(
   file = stan_model_file,
