@@ -21,7 +21,7 @@ theme_set(theme_bw())
 # updates 2/5/25
 forecast_quantile_covid_total_hosp_simulations <- arrow::read_parquet("data/US_wide_data/estimated_hospitalizations_data/Obs_Exp_totalHosp_daily_TIMEVARYING_FORECAST_SIMU_quantiles_14days_02112025.parquet") %>% mutate(optimization = "Simulations Forecasted incidH from forecast_date 14 days, LOS: prior yr time varying (3 months)", total_hosp_estimate = `0.5`)
 
-forecast_quantile_covid_total_hosp_simulations <- arrow::read_parquet("data/US_wide_data/estimated_hospitalizations_data/Obs_Exp_totalHosp_daily_TIMEVARYING_FORECAST_SIMU_quantiles_14days_parallel03192025_MD.parquet"
+forecast_quantile_covid_total_hosp_simulations <- arrow::read_parquet("data/US_wide_data/estimated_hospitalizations_data/Obs_Exp_totalHosp_daily_TIMEVARYING_FORECAST_SIMU_quantiles_14days_parallel_negbinom_realtime_LOS_03202025.parquet"
 ) %>% mutate(optimization = "Simulations Forecasted incidH from forecast_date 14 days, LOS: prior yr time varying (3 months)", total_hosp_estimate = `0.5`)                                                                               
 forecast_quantile_covid_total_hosp_simulations <- forecast_quantile_covid_total_hosp_simulations %>% 
   mutate(Lower_95_CI = `0.025`, Upper_95_CI = `0.975`, Lower_80_CI = `0.1`, Upper_80_CI = `0.9`, Lower_50_CI = `0.25`, Upper_50_CI = `0.75`)
@@ -36,18 +36,18 @@ fluszn_23_24 <- seq(as.Date("2023-09-01"), as.Date("2024-04-30"), by = "day")
 state_names <- state.name
 
 # why isnt inc hosp targets working !!!! 
-forecasts_hosp_states <- load_forecasts(
-  models = "COVIDhub-ensemble",
-  dates = fluszn_23_24,
-  date_window_size = 6,
-  locations = state_names,
-  types = c("point", "quantile"),
-  targets = inc_hosp_targets,
-  source = "zoltar",
-  verbose = FALSE,
-  as_of = NULL,
-  hub = c("US")
-)
+# forecasts_hosp_states <- load_forecasts(
+#   models = "COVIDhub-ensemble",
+#   dates = fluszn_23_24,
+#   date_window_size = 6,
+#   locations = state_names,
+#   types = c("point", "quantile"),
+#   targets = inc_hosp_targets,
+#   source = "zoltar",
+#   verbose = FALSE,
+#   as_of = NULL,
+#   hub = c("US")
+# )
 
 forecasts_hosp_states <- arrow::read_parquet("data/covidHubUtils_forecastData/forecast_hosp.parquet") %>% mutate(horizon = as.numeric(horizon))
 
@@ -107,7 +107,7 @@ combined_data_MD <- combined_data %>%
   filter(state == "MD")
 
 state_list <- unique(combined_data$state)
-pdf("~/Downloads/hospitalizations_combined_visualizations_forecast_simulations_14days_MD_parallel.pdf", width = 10, height = 8)
+pdf("~/Downloads/hospitalizations_combined_visualizations_forecast_simulations_14days_parallel_negbinom_REALTIMELOS.pdf", width = 10, height = 8)
 # Loop through each state and save combined plots
 #state_list <- c("MD")
 
@@ -139,7 +139,7 @@ for (state_abbv in state_list) {
     # Labels and themes
     labs(x = "Date", 
          y = "Hospitalizations (Observed & Estimated)", 
-         title = paste0(state_abbv, " Combined Hospitalizations: Total and IncidH")) +
+         title = paste0(state_abbv, " TotalH and IncidH - LOS: past 90 days")) +
     theme_bw() +
     theme(axis.text.x = element_text(angle = 45, hjust = 1),
           legend.position = "left") +
