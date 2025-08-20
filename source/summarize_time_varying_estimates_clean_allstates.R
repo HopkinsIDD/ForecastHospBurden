@@ -348,3 +348,95 @@ for (state_abbv in state_list) {
 # Close PDF 
 dev.off()
 
+# incidH graphs for Data scientist interview
+
+state_list <- unique(combined_data$state)
+pdf("~/Downloads/UTincidHforecasts.pdf", width = 10, height = 8)
+# Loop through each state and save combined plots
+state_list <- c("UT")
+
+for (state_abbv in state_list) {
+  combined_viz <- combined_data %>%  
+    filter(state == state_abbv) %>% 
+    ggplot(aes(x = date)) + 
+    # Observed total hospitalizations
+    #geom_line(aes(y = total_hosp, linetype = "Observed TotalH"), color = "black") +
+    geom_line(aes(y = incidH, linetype = "Observed IncidH"), color = "black") +
+    geom_line(aes(y = incidH_estimate, group = forecast_date, linetype = "Forecasted IncidH"), color = "darkred") +
+    geom_point(aes(y = incidH_estimate, group = forecast_date), size = 0.3, color = "darkred") +
+    # Confidence intervals
+    geom_ribbon(aes(
+      ymin = Lower_95_CI_incidH, ymax = Upper_95_CI_incidH, fill = "95% CI (IncidH)"), alpha = 0.3) +
+    geom_ribbon(aes(
+      ymin = Lower_50_CI_incidH, ymax = Upper_50_CI_incidH, fill = "50% CI (IncidH)"), alpha = 0.2) +
+    # Labels and themes
+    labs(x = "Date", 
+         y = "Hospitalizations (Observed & Forecasted)", 
+         title = paste0("Incident COVID-19 Forecasts in Utah for the 23/24 Respiratory Virus Season")) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          legend.position = "left") +
+    # Legends for linetype and fill
+    scale_linetype_manual(name = "Line Type", 
+                          values = c(
+                            #"Observed TotalH" = "solid", 
+                                     "Observed IncidH" = "solid", 
+                                     "Forecasted IncidH" = "solid")) +
+    scale_fill_manual(name = "Confidence Interval", 
+                      values = c("95% CI (IncidH)" = "pink", 
+                                 #"50% CI (Total)" = "darkblue", 
+                                 "50% CI (IncidH)" = "darkred"))
+  
+  # Print each plot to a new page in the PDF
+  print(combined_viz)
+  
+}
+
+# Close PDF 
+dev.off()
+
+state_list <- unique(combined_data$state)
+pdf("~/Downloads/ReportedUTData.pdf", width = 10, height = 8)
+# Loop through each state and save combined plots
+state_list <- c("UT")
+
+for (state_abbv in state_list) {
+  combined_viz <- combined_data %>%  
+    filter(state == state_abbv) %>% 
+    ggplot(aes(x = date)) + 
+    # Observed total hospitalizations
+    geom_line(aes(y = total_hosp, linetype = "Observed TotalH"), color = "darkblue") +
+    geom_line(aes(y = incidH, linetype = "Observed IncidH"), color = "darkred") +
+    #geom_line(aes(y = incidH_estimate, group = forecast_date, linetype = "Forecasted IncidH"), color = "darkred") +
+    #geom_point(aes(y = incidH_estimate, group = forecast_date), size = 0.3, color = "darkred") +
+    # Confidence intervals
+    #geom_ribbon(aes(
+    #  ymin = Lower_95_CI_incidH, ymax = Upper_95_CI_incidH, fill = "95% CI (IncidH)"), alpha = 0.3) +
+    #geom_ribbon(aes(
+    #  ymin = Lower_50_CI_incidH, ymax = Upper_50_CI_incidH, fill = "50% CI (IncidH)"), alpha = 0.2) +
+    # Labels and themes
+    labs(x = "Date", 
+         y = "Incident and Total Hospitalizations", 
+         title = paste0("Incident and Total Hospitalizations in Utah for the 23/24 Respiratory Virus Season")) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          legend.position = "left") +
+    # Legends for linetype and fill
+    scale_linetype_manual(name = "Line Type",
+                          values = c(
+                            "Observed TotalH" = "solid",
+                            "Observed IncidH" = "solid"
+                            #"Forecasted IncidH" = "solid")
+                            )) #+
+    # scale_fill_manual(name = "Confidence Interval", 
+    #                   values = c("95% CI (IncidH)" = "pink", 
+    #                              #"50% CI (Total)" = "darkblue", 
+    #                              "50% CI (IncidH)" = "darkred"))
+  
+  # Print each plot to a new page in the PDF
+  print(combined_viz)
+  
+}
+
+# Close PDF 
+dev.off()
