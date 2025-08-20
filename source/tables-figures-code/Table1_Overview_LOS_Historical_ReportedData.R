@@ -9,8 +9,15 @@ library(lubridate)
 library(gghighlight)
 library(arrow)
 library(Hmisc)
+library(foreach)
+library(doParallel)
+library(doFuture)
+
 
 ### IMPORT INITIAL DATA -----------------------------------
+# for parallelization
+n_cores <- detectCores()
+n_cores
 
 # source data functions
 source("source/data_setup_source.R")
@@ -172,7 +179,50 @@ create_totalH_df_by_factor(data = covid_HHS_data_states_lagtemp %>% dplyr::selec
 
 create_incidH_df_by_factor(data = covid_HHS_data_states_lagtemp %>% dplyr::select(-total_hosp, -incidH_prior_day), factor_col = "season")
 
-create_optimization_timevarying_by_factor(parent_data = covid_HHS_data_states_lagtemp, optimize_los, factor_col = "season") 
+# create_optimization_timevarying_by_factor(parent_data = covid_HHS_data_states_lagtemp, optimize_los, factor_col = "season") 
+
+# create_optimization_timevarying_by_factor_CI(parent_data = covid_HHS_data_states_lagtemp, optimize_los, factor_col = "season", sims = 2) 
+
+
+start_time <- Sys.time()
+create_optimization_timevarying_by_factor_parallel(parent_data = covid_HHS_data_states_lagtemp, factor_col = "season", sims = 1) 
+end_time <- Sys.time()
+end_time - start_time
+
+write_csv(los_opt_by_state, "data/tables-figures-data/length-of-stay-estimates/historical-data/Table1_LOS_Szn_100sims.csv")
+
+quantile_probs <- c(
+  0.010, 0.025, 0.050, 0.100, 0.150,
+  0.200, 0.250, 0.300, 0.350, 0.400,
+  0.450, 0.500, 0.550, 0.600, 0.650,
+  0.700, 0.750, 0.800, 0.850, 0.900,
+  0.950, 0.975, 0.990
+)
+
+calculate_quantiles <- function(data, quantile_probs) {
+  # Group by date and calculate quantiles for total_hosp_estimate
+  quantiles_by_date <- data %>%
+    group_by(state, date, forecast_date) %>%
+    summarise(
+      total_hosp_quantiles = list(quantile(total_hosp_estimate, probs = quantile_probs, na.rm = TRUE))
+    ) %>%
+    unnest_wider(total_hosp_quantiles, names_sep = "_") %>%
+    rename_with(
+      ~ paste0(quantile_probs), 
+      starts_with("total_hosp_quantiles_")
+    )
+  
+  return(quantiles_by_date)
+}
+
+
+# Apply the function to calculate quantiles
+quantiles_results <- calculate_quantiles(optimized_data_all_quantiles, quantile_probs)
+
+quantile_cols <- as.character(quantile_probs)
+
+optimized_data_all_quantiles_temp <- quantiles_results %>% left_join(optimized_data_all_quantiles %>% select(state, date, total_hosp) %>%  distinct(), by = c("state", "date")) %>% 
+  mutate(n_simu = 100) 
 
 write_csv(los_opt_by_state, "data/tables-figures-data/length-of-stay-estimates/historical-data/Table1_LOS_Szn.csv")
 
@@ -182,10 +232,16 @@ create_totalH_df_by_factor(data = covid_HHS_data_states_lagtemp %>% dplyr::selec
 # Create dataframes for each state with incident hospitalization data
 create_incidH_df_by_factor(data = covid_HHS_data_states_lagtemp %>% dplyr::select(-total_hosp, -incidH_prior_day), factor_col = "respiratory_season")
 
+start_time <- Sys.time()
+create_optimization_timevarying_by_factor_parallel(parent_data = covid_HHS_data_states_lagtemp, factor_col = "respiratory_season", sims = 100) 
+end_time <- Sys.time()
+end_time - start_time
+
+
+
+write_csv(los_opt_by_state, "data/tables-figures-data/length-of-stay-estimates/historical-data/Table1_LOS_Waves_100sims.csv")
+
 create_optimization_timevarying_by_factor(parent_data = covid_HHS_data_states_lagtemp, optimize_los, factor_col = "respiratory_season") 
-
-write_csv(los_opt_by_state, "data/tables-figures-data/length-of-stay-estimates/historical-data/Table1_LOS_Waves.csv")
-
 # Create dataframes for each state with incident hospitalization data
 
 create_totalH_df_by_factor(data = covid_HHS_data_states_lagtemp %>% dplyr::select(-incidH, -incidH_prior_day), factor = "year_szn") 
