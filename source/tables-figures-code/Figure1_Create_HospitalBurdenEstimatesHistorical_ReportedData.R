@@ -58,7 +58,7 @@ covid_HHS_data_USA_lag <- covid_HHS_data_states_lag %>%
 # Create Data for Figures US Only (uncomment above if want all states)--------
 # filter date to 23/24 resp virus szn
 covid_HHS_data_states_lag <- covid_HHS_data_USA_lag %>% 
-  filter(date >= "2023-08-01") %>% 
+  #filter(date >= "2023-08-01") %>% 
   mutate(epiweek = epiweek(date))
   
 # create file with reported incident data for Table 1 
@@ -121,6 +121,18 @@ create_optimization_timevarying_epiweek(parent_data = covid_HHS_data_states_lagt
 
 write_csv(los_opt_by_state_forecast_date, "data/tables-figures-data/length-of-stay-estimates/historical-data/Figure1_HistoricalHospBurdenEstimates_EpiWeek_TimeVaryingLOS_90day.csv")
  
+# go by week with new functions
+covid_HHS_data_states_lagtemp <- covid_HHS_data_states_lagtemp %>% 
+  mutate(epiweek_year_szn = paste0(epiweek, "_", year_szn)) 
+
+create_totalH_df_by_factor(data = covid_HHS_data_states_lagtemp %>% dplyr::select(-incidH, -incidH_prior_day), factor = "epiweek_year_szn") 
+
+create_incidH_df_by_factor(data = covid_HHS_data_states_lagtemp %>% dplyr::select(-total_hosp, -incidH_prior_day), factor_col = "epiweek_year_szn")
+
+create_optimization_timevarying_by_factor(parent_data = covid_HHS_data_states_lagtemp, optimize_los, factor_col = "epiweek_year_szn") 
+
+write_csv(los_opt_by_state, "data/tables-figures-data/length-of-stay-estimates/historical-data/Figure1_HistoricalHospBurdenEstimates_EpiWeek_TimeVaryingLOS_90day.csv")
+
 # one LOS value for entire time period 
 
 # Get LOS estimates for LOS Generated Each EpiWeek from past 90 days ------
