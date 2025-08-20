@@ -116,6 +116,13 @@ optimize_los <- function(los, data, observed){
   
   expected <- clean_expected(expected)
   
+  # combined <- inner_join(observed, expected, by = "date") %>% 
+  #   dplyr::select(state, date, total_hosp, total_hosp_estimate) %>% 
+  #   mutate(sq_difference = (total_hosp - total_hosp_estimate)^2) %>% 
+  #   filter(!is.na(sq_difference)) %>% 
+  #   summarise(sum_sq_difference = sum(sq_difference)) # mean or median instead here? 
+  # 
+  # return(combined$sum_sq_difference)
   combined <- inner_join(observed, expected, by = "date") %>% 
     dplyr::select(state, date, total_hosp, total_hosp_estimate) %>% 
     mutate(absolute_difference = abs(total_hosp - total_hosp_estimate)) %>% 
@@ -123,7 +130,6 @@ optimize_los <- function(los, data, observed){
     summarise(sum_absolute_difference = sum(absolute_difference)) # mean or median instead here? 
   
   return(combined$sum_absolute_difference)
-  
 }
 
 # Estimate LOS value for each state using optimization ------------------------------------
@@ -862,3 +868,340 @@ create_optimization_timevarying_by_factor <- function(parent_data, optimize_los,
   
   print("Optimization completed!")
 }
+
+
+create_incidH_df_by_factor <- function(data, factor_col) {
+  states_list <- unique(data$state)
+  #forecast_date_list <- unique(forecast_data$forecast_date)
+  
+  for (abbv in states_list) {
+    state_data <- data %>% filter(state == abbv)
+    factor_list <- unique(state_data[[factor_col]])
+    
+    for (selected_factor in factor_list) {
+      
+      # Filter data for the current state and year_szn
+      state_factor_filter <- data %>% 
+        filter(state == abbv &
+                 .data[[factor_col]]  == selected_factor)
+      
+      # Ensure there's data to process
+      if (nrow(state_factor_filter) > 0) {
+        # Assign the filtered data to a dynamically created variable name
+        assign(
+          paste0("covid_incidH_data_", abbv, "_", selected_factor),
+          state_factor_filter,
+          envir = .GlobalEnv
+        )
+      }
+    }
+  }
+}
+create_totalH_df_by_factor <- function(data, factor_col) {
+  states_list <- unique(data$state)
+  #forecast_date_list <- unique(forecast_data$forecast_date)
+  
+  for (abbv in states_list) {
+    state_data <- data %>% filter(state == abbv)
+    factor_list <- unique(state_data[[factor_col]])
+    
+    for (selected_factor in factor_list) {
+      
+      # Filter data for the current state and year_szn
+      state_factor_filter <- data %>% 
+        filter(state == abbv &
+                 .data[[factor_col]]  == selected_factor)
+      # Ensure there's data to process
+      if (nrow(state_factor_filter) > 0) {
+        # Assign the filtered data to a dynamically created variable name
+        assign(
+          paste0("covid_totalHosp_data_", abbv, "_", selected_factor),
+          state_factor_filter,
+          envir = .GlobalEnv
+        )
+      }
+    }
+  }
+}
+
+# create CI for LOS estimates in Table 1
+create_optimization_timevarying_by_factor_CI <- function(parent_data, optimize_los, factor_col, sims=100) {
+  states_list <- unique(parent_data$state)
+  los_opt_by_state <- list()
+  combined_list <- list()
+
+  for (abbv in states_list) {
+    print(abbv) # for tracking progress
+
+    # Filter data for the current state
+    state_data <- parent_data %>% filter(state == abbv)
+    factor_list <- unique(state_data[[factor_col]])
+
+
+      cluster <- makeCluster(n_cores - 1, timeout = 600)
+      registerDoParallel(cluster)
+      clusterExport(cluster, varlist = c("optimize_los", 
+                                   "create_hosp_dates", 
+                                   "create_curr_hosp", 
+                                   "clean_expected", 
+                                   "burden_est_funct", 
+                                   "covidhosp_stay_funct"))
+      options(timeout = 600)  # 10 minutes
+
+      results <- foreach(selected_factor = factor_list,
+                         .packages = c("dplyr", "tidyr"),
+                         .export = c("optimize_los")) %dopar% {
+      for (sim in 1:sims) {
+        print(paste("Simulation:", sim)) # for tracking progress
+
+      state_factor_filter <- state_data %>%
+        dplyr::filter(.data[[factor_col]] == selected_factor)
+
+      # Ensure there's data to process
+      if (nrow(state_factor_filter) > 0) {
+        # Construct dynamic variable names
+        dynamic_incidH_name <- paste0("covid_incidH_data_", abbv, "_", selected_factor)
+        dynamic_totalHosp_name <- paste0("covid_totalHosp_data_", abbv, "_", selected_factor)
+
+        # Check if the dynamic objects exist before proceeding
+        if (exists(dynamic_incidH_name, envir = .GlobalEnv) && exists(dynamic_totalHosp_name, envir = .GlobalEnv)) {
+          data <- get(dynamic_incidH_name)
+          observed <- get(dynamic_totalHosp_name)
+
+          # Perform optimization
+          los_range <- c(3, 15)
+          los_min <- optimize(optimize_los, los_range,
+                              data = data,
+                              observed = observed,
+                              maximum = FALSE)
+
+          # Create a results dataframe
+          state_season_df <- data.frame(
+            state = abbv,
+            selected_strata = selected_factor,
+            optimized_los = los_min$minimum,
+            objective = los_min$objective,
+            simulation = sim
+          )
+
+          los_opt_by_state[[paste(abbv, selected_factor, sim, sep = "_")]] <- state_season_df
+          #
+          # data.frame(
+          #   state = abbv,
+          #   selected_strata = selected_factor,
+          #   optimized_los = los_min$minimum,
+          #   objective = los_min$objective,
+          #   simulation = sim
+          #)
+        } else {
+          print(paste("Dynamic objects not found for:", dynamic_incidH_name, "or", dynamic_totalHosp_name))
+        }
+      }
+
+      return(los_opt_by_state)
+    }
+      }
+
+    # combined_list <- c(combined_list, do.call(c, results))
+    # Don't forget to stop the cluster
+
+    #combined_list[[abbv]] <- results
+    combined_list <- c(combined_list, do.call(c, results))
+    stopCluster(cl = cluster)
+  }
+
+  # Combine list of dataframes into a single dataframe
+  los_opt_by_state <- do.call(rbind, combined_list)
+  return(los_opt_by_state)
+  # Save the result to the global environment
+  #assign("los_opt_by_state", los_opt_by_state, envir = .GlobalEnv)
+
+  print("Optimization completed!")
+}
+
+
+create_optimization_timevarying_by_factor_parallel <- function(parent_data, factor_col, sims) {
+  states_list <- unique(parent_data$state)
+  los_opt_by_state <- list()
+  simulation_list <- seq_len(sims)  # Create a list of simulation numbers
+  combined_list <- list()
+  
+  cluster <- makeCluster(n_cores - 2, timeout = 1200)
+  clusterExport(cluster, varlist = c("optimize_los",
+                                     "create_hosp_dates",
+                                     "create_curr_hosp",
+                                     "clean_expected",
+                                     "burden_est_funct",
+                                     "covidhosp_stay_funct"))
+  registerDoParallel(cluster)
+  options(timeout = 1200)  # 10 minutes
+  on.exit(stopCluster(cluster), add = TRUE)  # Automatically stop at end
+
+  
+  for (abbv in states_list) {
+    print(abbv) # for tracking progress
+
+    # Filter data for the current state
+    state_data <- parent_data %>% filter(state == abbv)
+    factor_list <- unique(state_data[[factor_col]])
+
+    for (selected_factor in factor_list) {
+      state_factor_filter <- state_data %>%
+        dplyr::filter(.data[[factor_col]] == selected_factor)
+
+      # Ensure there's data to process
+      if (nrow(state_factor_filter) > 0) {
+        # Construct dynamic variable names
+        dynamic_incidH_name <- paste0("covid_incidH_data_", abbv, "_", selected_factor)
+        dynamic_totalHosp_name <- paste0("covid_totalHosp_data_", abbv, "_", selected_factor)
+
+        # Check if the dynamic objects exist before proceeding
+        if (exists(dynamic_incidH_name, envir = .GlobalEnv) && exists(dynamic_totalHosp_name, envir = .GlobalEnv)) {
+
+
+          # Use parallel processing to speed up the optimization
+          local_data <- get(dynamic_incidH_name, envir = .GlobalEnv)
+          local_observed <- get(dynamic_totalHosp_name, envir = .GlobalEnv)
+          local_abbv <- abbv
+          local_factor <- selected_factor
+
+          #registerDoSEQ()  # Use sequential backend instead of parallel
+          # Parallel processing of simulation_list
+          
+          results <- foreach(simulation_num = simulation_list,
+                             .packages = c("dplyr", "tidyr")
+
+          ) %dopar% {
+            tryCatch({
+
+
+          # Perform optimization
+          los_range <- c(3, 15)
+          los_min <- optimize(optimize_los, los_range,
+                              data = local_data,
+                              observed = local_observed,
+                              maximum = FALSE)
+
+          # Create a results dataframe
+          # state_season_df <- data.frame(
+          #   state = abbv,
+          #   selected_strata = selected_factor,
+          #   optimized_los = los_min$minimum,
+          #   objective = los_min$objective,
+          #   simulation = simulation_num
+          # )
+          #
+          # los_opt_by_state[[paste(abbv, selected_factor, simulation_num, sep = "_")]] <- state_season_df
+          #return(los_opt_by_state)
+          data.frame(
+            state = local_abbv,
+            selected_strata = local_factor,
+            optimized_los = los_min$minimum,
+            objective = los_min$objective,
+            simulation = simulation_num
+          )
+          })
+          }
+          combined_list <- c(combined_list, results)
+
+        } else {
+          print(paste("Dynamic objects not found for:", dynamic_incidH_name, "or", dynamic_totalHosp_name))
+        }
+      }
+      #
+    }
+    # Merge parallel results into combined_list
+    #combined_list <- c(combined_list, do.call(c, results))
+    # Don't forget to stop the cluster
+    #stopCluster(cl = cluster)
+  }
+
+  # # Combine list of dataframes into a single dataframe
+  # los_opt_by_state <- do.call(rbind, los_opt_by_state)
+  #
+  # # Save the result to the global environment
+  # assign("los_opt_by_state", los_opt_by_state, envir = .GlobalEnv)
+
+
+  # Combine the results into a single dataframe
+  combined_df <- do.call(rbind, combined_list)
+  assign("los_opt_by_state", combined_df, envir = .GlobalEnv)
+  return(combined_df)
+
+  #print("Optimization completed!")
+}
+
+# create_optimization_timevarying_by_factor_parallel <- function(parent_data, factor_col, sims) {
+#   states_list <- unique(parent_data$state)
+#   simulation_list <- seq_len(sims)
+#   combined_list <- list()
+#   
+#   # Start parallel backend
+#   cluster <- makeCluster(n_cores - 1, timeout = 600)
+#   clusterExport(cluster, varlist = c(
+#     "optimize_los", 
+#     "create_hosp_dates", 
+#     "create_curr_hosp", 
+#     "clean_expected", 
+#     "burden_est_funct", 
+#     "covidhosp_stay_funct"
+#   ))
+#   registerDoParallel(cluster)
+#   on.exit(stopCluster(cluster), add = TRUE)
+#   options(timeout = 600)
+#   
+#   for (abbv in states_list) {
+#     print(abbv)
+#     state_data <- parent_data %>% filter(state == abbv)
+#     factor_list <- unique(state_data[[factor_col]])
+#     
+#     for (selected_factor in factor_list) {
+#       state_factor_filter <- state_data %>%
+#         dplyr::filter(.data[[factor_col]] == selected_factor)
+#       
+#       if (nrow(state_factor_filter) > 0) {
+#         dynamic_incidH_name <- paste0("covid_incidH_data_", abbv, "_", selected_factor)
+#         dynamic_totalHosp_name <- paste0("covid_totalHosp_data_", abbv, "_", selected_factor)
+#         
+#         if (exists(dynamic_incidH_name, envir = .GlobalEnv) && exists(dynamic_totalHosp_name, envir = .GlobalEnv)) {
+#           local_data <- get(dynamic_incidH_name, envir = .GlobalEnv)
+#           local_observed <- get(dynamic_totalHosp_name, envir = .GlobalEnv)
+#           local_abbv <- abbv
+#           local_factor <- selected_factor
+#           
+#           # Launch parallel optimization
+#           results <- foreach(simulation_num = simulation_list,
+#                              .packages = c("dplyr", "tidyr")) %dopar% {
+#                                tryCatch({
+#                                  los_min <- optimize(optimize_los, c(3, 15),
+#                                                      data = local_data,
+#                                                      observed = local_observed,
+#                                                      maximum = FALSE)
+#                                  
+#                                  data.frame(
+#                                    state = local_abbv,
+#                                    selected_strata = local_factor,
+#                                    optimized_los = los_min$minimum,
+#                                    objective = los_min$objective,
+#                                    simulation = simulation_num
+#                                  )
+#                                }, error = function(e) {
+#                                  message("Error in worker: ", e$message)
+#                                  NULL
+#                                })
+#                              }
+#           
+#           # Append non-null results
+#           combined_list <- c(combined_list, Filter(Negate(is.null), results))
+#         } else {
+#           message("Dynamic objects not found: ", dynamic_incidH_name, " or ", dynamic_totalHosp_name)
+#         }
+#       }
+#     }
+#   }
+#   
+#   combined_df <- do.call(rbind, combined_list)
+#   assign("los_opt_by_state", combined_df, envir = .GlobalEnv)
+#   return(combined_df)
+# }
+
