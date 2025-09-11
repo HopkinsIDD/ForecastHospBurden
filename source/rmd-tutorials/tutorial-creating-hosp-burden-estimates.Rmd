@@ -1,0 +1,472 @@
+---
+title: "Hospital Burden Estimation: Using Reported Incid Hospitalization Data and Mathematical Optimization of Hospital Length of Stay (LOS)"
+author: "Your Name"
+date: "`r format(Sys.Date())`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    number_sections: true
+    code_folding: show
+  pdf_document:
+    number_sections: true
+fontsize: 11pt
+editor_options:
+  chunk_output_type: console
+params:
+  gt_data_path: "data/US_wide_data/COVID-19_Reported_Patient_Impact_and_Hospital_Capacity_by_State_Timeseries_All_States_06-07-2024.parquet"
+  sims_default: 100
+  filter_to_US_only: true
+---
+
+# Overview
+
+Explanation of estimating hospital length of stay (LOS) used to generate Table 1 (see google drive)
+
+Main Data Source: HHS COVID-19 Reported Patient Impact and Hospital Capacity by State Timeseries (https://healthdata.gov/Hospital/COVID-19-Reported-Patient-Impact-and-Hospital-Capa/g62h-syeh/about_data)
+
+This tutorial explains and reproduces the workflow used to generate **Table 1** LOS estimates from HHS-reported COVID hospitalization data. It walks through:
+
+1. Data ingestion and construction of derived features (e.g., incident admissions lag, seasonal strata).
+2. Creating state- and strata-specific data frames for optimization.
+3. Optimizing **length of stay (LOS)** by minimizing the absolute difference between observed and simulated hospital occupancy.
+4. Running **parallel simulations** to obtain distributions and quantiles of LOS.
+5. Writing results to disk for downstream tables/figures.
+
+For this walk through, the functions are embedded throughout. In the main scripts they are sourced from (`source/data_setup_source.R`). 
+
+# Setup
+
+```{r setup, message=FALSE}
+# update directory to your local path 
+knitr::opts_knit$set(root.dir = "/Users/sarahcotton/Documents/ForecastHospBurden")
+
+# Set chunk defaults
+knitr::opts_chunk$set(
+  message = FALSE, warning = FALSE, fig.align = "center",
+  collapse = TRUE, comment = "#>"
+)
+
+# Core libraries
+library(dplyr)
+library(tidyr)
+library(tidyverse)
+library(lubridate)
+library(readr)
+library(arrow)
+library(Hmisc)
+
+# Parallelization
+library(foreach)
+library(doParallel)
+
+# Optional (used in original scripts)
+library(tidycensus)
+library(gghighlight)
+
+# Detect cores (adjust if needed)
+n_cores <- parallel::detectCores()
+n_cores
+```
+
+# Data Import & Key Variables
+
+Read in HHS data, light cleaning and create key variables:
+
+- `total_hosp`: adult + pediatric confirmed COVID hospitalizations (current occupancy)
+- `incidH_prior_day`: adult + pediatric admissions reported for the *previous* day (the `prior_day` logic is only used with reported historical data not forecast data in future use cases)
+- `incidH`: a one-day **lead** of `incidH_prior_day` so incident admissions align with the correct service day
+
+ 
+```{r import}
+opt <- list()
+opt$gt_data_path <- params$gt_data_path
+
+covid_HHS_data_states <- arrow::read_parquet(opt$gt_data_path) %>%
+  mutate(
+    total_hosp = total_adult_patients_hospitalized_confirmed_covid +
+                 total_pediatric_patients_hospitalized_confirmed_covid,
+    incidH_prior_day = previous_day_admission_adult_covid_confirmed +
+                       previous_day_admission_pediatric_covid_confirmed,
+    date = as_date(date)
+  ) %>%
+  arrange(state, date) %>%
+  select(state, date, total_hosp, incidH_prior_day)
+
+# Attach labels for provenance
+attr(covid_HHS_data_states[["total_hosp"]], "label") <-
+  "total_adult_patients_hospitalized_confirmed_covid + total_pediatric_patients_hospitalized_confirmed_covid"
+attr(covid_HHS_data_states[["incidH_prior_day"]], "label") <-
+  "previous_day_admission_adult_covid_confirmed + previous_day_admission_pediatric_covid_confirmed"
+```
+
+```{r}
+# example data visualization
+covid_US <- covid_HHS_data_states %>%
+  group_by(date) %>%
+  summarise(
+    total_hosp = sum(total_hosp, na.rm = TRUE),
+    incidH_prior_day = sum(incidH_prior_day, na.rm = TRUE)
+  )
+
+ggplot(covid_US, aes(x = date, y = total_hosp)) +
+  geom_line() +
+  labs(
+    title = "U.S. COVID-19 Hospital Occupancy (HHS)",
+    x = NULL, y = "Patients hospitalized (current)"
+  ) +
+  scale_y_continuous(labels = scales::comma) +
+  theme_minimal(base_size = 12)
+```
+
+## Create 1-Day Lead for Incident Admissions
+
+**Function used:** `create_incidH_lag()`
+
+> This takes each state’s time series and creates `incidH = lead(incidH_prior_day)`, dropping the last date to preserve to datasets are aligned. 
+
+```{r fn-create_incidH_lag}
+create_incidH_lag <- function(state_data){
+  states_list <- unique(state_data$state)
+  lagged_dfs <- list()
+  for (state in states_list) {
+    state_data_state <- state_data[state_data$state == state, ]
+    state_data_state <- state_data_state %>%
+      mutate(incidH = dplyr::lead(incidH_prior_day)) %>%  
+      filter(date < max(date))  # drop most recent to account for lead
+    lagged_dfs[[state]] <- state_data_state
+  }
+  merged_df <- dplyr::bind_rows(lagged_dfs)
+  return(merged_df)
+}
+```
+
+```{r create-lag-series}
+covid_HHS_data_states_lag <- create_incidH_lag(covid_HHS_data_states)
+
+# Add labels back for clarity
+attr(covid_HHS_data_states_lag[["incidH"]], "label") <-
+  "lead(previous_day_admission_adult_covid_confirmed + previous_day_admission_pediatric_covid_confirmed)"
+attr(covid_HHS_data_states_lag[["total_hosp"]], "label") <-
+  attr(covid_HHS_data_states[["total_hosp"]], "label")
+attr(covid_HHS_data_states_lag[["incidH_prior_day"]], "label") <-
+  attr(covid_HHS_data_states[["incidH_prior_day"]], "label")
+
+
+```
+
+## Aggregate to US for Table 1 / Example
+
+The builds a US wide series by summing across states.
+
+```{r to-us}
+# US aggregate time series
+covid_HHS_data_USA_lag <- covid_HHS_data_states_lag %>%
+  group_by(date) %>%
+  summarise(
+    total_hosp = sum(total_hosp),
+    incidH_prior_day = sum(incidH_prior_day),
+    incidH = sum(incidH)
+  ) %>%
+  mutate(state = "US") 
+
+```
+
+# Season & Strata Construction
+
+Create a function that defines seasons and respiratory seasons / waves that span Aug–Jul.
+
+**Function used:** `get_season()`
+
+```{r fn-get-season}
+get_season <- function(date) {
+  month <- lubridate::month(date)
+  if (month %in% c(12, 1, 2)) {
+    return("Winter")
+  } else if (month %in% c(3, 4, 5)) {
+    return("Spring")
+  } else if (month %in% c(6, 7, 8)) {
+    return("Summer")
+  } else if (month %in% c(9, 10, 11)) {
+    return("Fall")
+  }
+}
+```
+
+```{r build-strata}
+covid_HHS_data_states_lagtemp <- covid_HHS_data_states_lag %>%
+  mutate(
+    year = lubridate::year(date),
+    season = sapply(date, get_season),
+    adjusted_year = ifelse(season == "Winter" & lubridate::month(date) == 12, year + 1, year),
+    year_szn = paste0(adjusted_year, "_", season)
+  ) %>%
+  select(-adjusted_year) %>%
+  mutate(
+    resp_year_start = dplyr::if_else(lubridate::month(date) >= 8, year(date), year(date) - 1),
+    respiratory_season = paste(resp_year_start, resp_year_start + 1, sep = "-"),
+    respiratory_season = factor(
+      respiratory_season,
+      levels = paste(2020:2023, 2021:2024, sep = "-"),
+      ordered = TRUE
+    )
+  ) %>%
+  select(-resp_year_start)
+```
+
+# Simulation & Optimization Functions, methods for optimizing hospital LOS 
+
+These functions generate simulated bed occupancy from daily admissions and a LOS distribution, and the optimizer that selects the LOS minimizing absolute error vs. observed hospital burden
+
+**Functions used next:**
+- `covidhosp_stay_funct()` – sample LOS per admission (negative binomial by default)
+- `burden_est_funct()` – expand admissions into occupied-bed days
+- `create_hosp_dates()` / `create_curr_hosp()` / `clean_expected()` – produce expected daily occupancy from admissions + LOS
+- `optimize_los()` – objective function minimized by `stats::optimize`
+
+```{r fn-core}
+# LOS sampler (NB as in script)
+covidhosp_stay_funct <- function(n, los = 5) {
+  rnbinom(n = n, size = los, prob = 0.5)
+}
+
+# Expand one day's admissions into daily occupancy dates
+burden_est_funct <- function(incidH, date, hospstayfunct = covidhosp_stay_funct, los = 5){
+  lubridate::as_date(sort(unlist(sapply(X = hospstayfunct(n = incidH, los = los), function(x = X) (0:(x-1)) + date))))
+}
+
+create_hosp_dates <- function(data, los = 5){
+  data_burden <- vector("list", nrow(data))
+  for (i in seq_len(nrow(data))){
+    data_burden[[i]] <- data[i, ] %>%
+      rename(admit_date = date) %>%
+      tidyr::expand_grid(hosp_dates = burden_est_funct(incidH = data$incidH[i], date = data$date[i], hospstayfunct = covidhosp_stay_funct, los = los))
+  }
+  return(data_burden)
+}
+
+create_curr_hosp <- function(data_burden){
+  data_burden %>%
+    dplyr::bind_rows() %>%
+    tibble::as_tibble() %>%
+    dplyr::select(-admit_date, -incidH) %>%
+    dplyr::group_by_all() %>%
+    dplyr::summarise(curr_hosp = length(hosp_dates), .groups = "drop")
+}
+
+clean_expected <- function(expected){
+  expected %>%
+    dplyr::rename(total_hosp_estimate = curr_hosp, date = hosp_dates) %>%
+    dplyr::select(date, total_hosp_estimate)
+}
+
+optimize_los <- function(los, data, observed){
+  expected_list <- create_hosp_dates(data, los = los)
+  expected <- create_curr_hosp(expected_list) %>% clean_expected()
+  combined <- dplyr::inner_join(observed, expected, by = "date") %>%
+    dplyr::select(state, date, total_hosp, total_hosp_estimate) %>%
+    dplyr::mutate(absolute_difference = abs(total_hosp - total_hosp_estimate)) %>%
+    dplyr::filter(!is.na(absolute_difference)) %>%
+    dplyr::summarise(sum_absolute_difference = sum(absolute_difference), .groups = "drop")
+  return(combined$sum_absolute_difference)
+}
+```
+
+# Example use case for covidhosp_stay_funct: visualize LOS distributions for different mean LOS values
+```{r}
+los_values <- c(3, 5, 7, 10)
+n_draws <- 100000
+
+los_samples <- map_dfr(los_values, ~
+  tibble(los_param = .x,
+         stay = covidhosp_stay_funct(n_draws, los = .x))
+)
+
+pmf <- los_samples %>%
+  count(los_param, stay, name = "n") %>%
+  group_by(los_param) %>%
+  mutate(p = n / sum(n)) %>%
+  ungroup()
+
+ggplot(pmf, aes(stay, p)) +
+  geom_col() +
+  facet_wrap(~ los_param, scales = "free_y") +
+  labs(title = "Length-of-Stay Distribution (Negative Binomial, prob = 0.5)",
+       subtitle = "Different values of the size parameter (\"mean los\")",
+       x = "Simulated stay length (days)",
+       y = "Probability") +
+  theme_minimal(base_size = 12)
+
+```
+# Example use case for burden_est_funct: visualize bed occupancy over time for single set of 200 patients admitted on 2024-01-01 
+Observe impact of higher mean LOS value causing increased burden over time
+```{r}
+origin <- as_date("2024-01-01")
+incidH <- 200
+
+simulate_census <- function(incidH, los, origin){
+  dates <- burden_est_funct(incidH = incidH, date = origin, los = los)
+  tibble(date = dates) %>%
+    count(date, name = "census") %>%
+    mutate(los_param = los)
+}
+
+census_df <- map_dfr(los_values, simulate_census, incidH = incidH, origin = origin)
+
+ggplot(census_df, aes(date, census, color = factor(los_param))) +
+  geom_line() +
+  labs(title = "Occupied Beds Over Time from One Admission Cohort",
+       subtitle = paste0("incidH = ", incidH, " on ", origin),
+       x = NULL, y = "Occupied beds",
+       color = "LOS param") +
+  theme_minimal(base_size = 12)
+
+```
+
+## Build Per-State Data Frames for Observed vs. Incident Series by Strata
+
+This creates dataframes for each strata / state (in this case US x season for Season Overall LOS values in Table 1 in google drive)
+Match *observed hospital burden* and *incident admissions* data frames for each state × stratum before optimization.
+
+**Functions used:** `create_incidH_df_by_factor()` and `create_totalH_df_by_factor()`
+
+```{r fn-by-factor}
+create_incidH_df_by_factor <- function(data, factor_col) {
+  states_list <- unique(data$state)
+  for (abbv in states_list) {
+    state_data <- dplyr::filter(data, state == abbv)
+    factor_list <- unique(state_data[[factor_col]])
+    for (selected_factor in factor_list) {
+      state_factor_filter <- dplyr::filter(data, state == abbv, .data[[factor_col]] == selected_factor)
+      if (nrow(state_factor_filter) > 0) {
+        assign(paste0("covid_incidH_data_", abbv, "_", selected_factor), state_factor_filter, envir = .GlobalEnv)
+      }
+    }
+  }
+}
+
+create_totalH_df_by_factor <- function(data, factor_col) {
+  states_list <- unique(data$state)
+  for (abbv in states_list) {
+    state_data <- dplyr::filter(data, state == abbv)
+    factor_list <- unique(state_data[[factor_col]])
+    for (selected_factor in factor_list) {
+      state_factor_filter <- dplyr::filter(data, state == abbv, .data[[factor_col]] == selected_factor)
+      if (nrow(state_factor_filter) > 0) {
+        assign(paste0("covid_totalHosp_data_", abbv, "_", selected_factor), state_factor_filter, envir = .GlobalEnv)
+      }
+    }
+  }
+}
+```
+
+```{r build-by-factor}
+# For this tutorial demonstrate with the `season` strata.
+create_totalH_df_by_factor(data = covid_HHS_data_states_lagtemp %>% dplyr::select(-incidH, -incidH_prior_day) %>% filter(state == "US"), factor_col = "season")
+create_incidH_df_by_factor(data = covid_HHS_data_states_lagtemp %>% dplyr::select(-total_hosp, -incidH_prior_day) %>% filter(state == "US"), factor_col = "season")
+```
+
+# LOS Optimization (Parallel, by Strata)
+Main function for estimating hospital LOS, this takes the longest to run with the parallel clusters so shortening run time here is an eventual goal 
+Run optimize function `stats::optimize` for each state × stratum, repeat `sims` times to build a sampling distribution for LOS and report quantiles.
+
+**Function used:** `create_optimization_timevarying_by_factor_parallel()`
+
+```{r fn-parallel-optimizer}
+create_optimization_timevarying_by_factor_parallel <- function(parent_data, factor_col, sims) {
+  states_list <- unique(parent_data$state)
+  simulation_list <- seq_len(sims)
+  combined_list <- list()
+
+  # Parallel backend
+  cluster <- parallel::makeCluster(max(1, n_cores - 2), timeout = 1200)
+  doParallel::registerDoParallel(cluster)
+  on.exit(stopCluster(cluster), add = TRUE)
+  options(timeout = 1200)
+
+  # Export essentials to workers
+  clusterExport(cluster, varlist = c("optimize_los", "create_hosp_dates", "create_curr_hosp", "clean_expected", "burden_est_funct", "covidhosp_stay_funct"), envir = environment())
+
+  for (abbv in states_list) {
+    state_data <- dplyr::filter(parent_data, state == abbv)
+    factor_list <- unique(state_data[[factor_col]])
+    for (selected_factor in factor_list) {
+      state_factor_filter <- dplyr::filter(state_data, .data[[factor_col]] == selected_factor)
+      if (nrow(state_factor_filter) > 0) {
+        dynamic_incidH_name <- paste0("covid_incidH_data_", abbv, "_", selected_factor)
+        dynamic_totalHosp_name <- paste0("covid_totalHosp_data_", abbv, "_", selected_factor)
+        if (exists(dynamic_incidH_name, envir = .GlobalEnv) && exists(dynamic_totalHosp_name, envir = .GlobalEnv)) {
+          local_data <- get(dynamic_incidH_name, envir = .GlobalEnv)
+          local_observed <- get(dynamic_totalHosp_name, envir = .GlobalEnv)
+          local_abbv <- abbv
+          local_factor <- selected_factor
+
+          results <- foreach::foreach(simulation_num = simulation_list, .packages = c("dplyr", "tidyr")) %dopar% {
+            los_min <- stats::optimize(optimize_los, c(3, 15), data = local_data, observed = local_observed, maximum = FALSE)
+            data.frame(
+              state = local_abbv,
+              selected_strata = local_factor,
+              optimized_los = los_min$minimum,
+              objective = los_min$objective,
+              simulation = simulation_num
+            )
+          }
+          combined_list <- c(combined_list, results)
+        }
+      }
+    }
+  }
+
+  combined_df <- dplyr::bind_rows(combined_list)
+  assign("los_opt_by_state", combined_df, envir = .GlobalEnv)
+  return(combined_df)
+}
+```
+
+```{r run-parallel}
+sims_default <- 1 # for short run time in example, table 1 uses 100 sims 
+start_time <- Sys.time(). # for tracking run time 
+los_opt_by_state <- create_optimization_timevarying_by_factor_parallel(
+  parent_data = covid_HHS_data_states_lagtemp,
+  factor_col = "season",
+  sims = params$sims_default
+)
+Sys.time() - start_time
+```
+
+# Summarize LOS Distributions with Quantiles
+
+Compute quantiles of the optimized LOS per state × stratum across simulation runs.
+
+**Function used:** `calculate_quantiles()`
+
+```{r fn-quantiles}
+quantile_probs <- c(0.010, 0.025, 0.050, 0.100, 0.150, 0.200, 0.250, 0.300, 0.350, 0.400,
+                    0.450, 0.500, 0.550, 0.600, 0.650, 0.700, 0.750, 0.800, 0.850, 0.900,
+                    0.950, 0.975, 0.990)
+
+calculate_quantiles <- function(data, quantile_probs) {
+  data %>%
+    dplyr::group_by(state, selected_strata) %>%
+    dplyr::summarise(total_hosp_quantiles = list(quantile(optimized_los, probs = quantile_probs, na.rm = TRUE)), .groups = "drop") %>%
+    tidyr::unnest_wider(total_hosp_quantiles, names_sep = "_") %>%
+    dplyr::rename_with(~ paste0("q", quantile_probs), dplyr::starts_with("total_hosp_quantiles_"))
+}
+```
+
+```{r compute-quantiles}
+quantiles_results <- calculate_quantiles(los_opt_by_state, quantile_probs)
+head(quantiles_results)
+```
+
+# Write Outputs
+
+```{r write-out, eval=FALSE}
+# Main LOS samples for Table 1 (seasonal strata)
+# readr::write_csv(los_opt_by_state, "data/tables-figures-data/length-of-stay-estimates/historical-data/Table1_LOS_Szn_100sims.csv")
+
+# Quantiles summary (if desired)
+# readr::write_csv(quantiles_results, "data/tables-figures-data/length-of-stay-estimates/historical-data/quantile_results/Table1_Quantiles_Season.csv")
+```
+
