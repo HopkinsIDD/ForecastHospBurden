@@ -12,6 +12,7 @@ library(Hmisc)
 library(foreach)
 library(doParallel)
 library(doFuture)
+library(purrr)
 
 
 ### IMPORT INITIAL DATA -----------------------------------
@@ -75,19 +76,6 @@ covid_HHS_data_states_lag <- covid_HHS_data_USA_lag %>%
 
 # Estimate LOS value for each state using optimization --------------
 
-# Define a custom function to calculate season
-# get_season <- function(date) {
-#   month <- month(date)
-#   if (month %in% c(12, 1, 2)) {
-#     return("Winter")
-#   } else if (month %in% c(3, 4, 5)) {
-#     return("Spring")
-#   } else if (month %in% c(6, 7, 8)) {
-#     return("Summer")
-#   } else if (month %in% c(9, 10, 11)) {
-#     return("Fall")
-#   }
-# }
 
 # Add year and season columns
 covid_HHS_data_states_lagtemp <- covid_HHS_data_states_lag %>%
@@ -118,79 +106,25 @@ covid_HHS_data_states_lagtemp <- covid_HHS_data_states_lag %>%
   ) %>%
   select(-resp_year_start)  
 
-# Get LOS estimates for LOS Generated Each EpiWeek from past 90 days ------
-create_incidH_df_by_factor <- function(data, factor_col) {
-  states_list <- unique(data$state)
-  #forecast_date_list <- unique(forecast_data$forecast_date)
-  
-  for (abbv in states_list) {
-    state_data <- data %>% filter(state == abbv)
-    factor_list <- unique(state_data[[factor_col]])
+# year_szn combo --
+create_totalH_df_by_factor(data = covid_HHS_data_states_lagtemp %>% dplyr::select(-incidH, -incidH_prior_day), factor = "year_szn") 
 
-    for (selected_factor in factor_list) {
+create_incidH_df_by_factor(data = covid_HHS_data_states_lagtemp %>% dplyr::select(-total_hosp, -incidH_prior_day), factor_col = "year_szn")
 
-      # Filter data for the current state and year_szn
-      state_factor_filter <- data %>% 
-        filter(state == abbv &
-                 .data[[factor_col]]  == selected_factor)
-      
-      # Ensure there's data to process
-      if (nrow(state_factor_filter) > 0) {
-        # Assign the filtered data to a dynamically created variable name
-        assign(
-          paste0("covid_incidH_data_", abbv, "_", selected_factor),
-          state_factor_filter,
-          envir = .GlobalEnv
-        )
-      }
-    }
-  }
-}
-create_totalH_df_by_factor <- function(data, factor_col) {
-  states_list <- unique(data$state)
-  #forecast_date_list <- unique(forecast_data$forecast_date)
-  
-  for (abbv in states_list) {
-    state_data <- data %>% filter(state == abbv)
-    factor_list <- unique(state_data[[factor_col]])
-    
-    for (selected_factor in factor_list) {
-      
-      # Filter data for the current state and year_szn
-      state_factor_filter <- data %>% 
-        filter(state == abbv &
-                 .data[[factor_col]]  == selected_factor)
-      # Ensure there's data to process
-      if (nrow(state_factor_filter) > 0) {
-        # Assign the filtered data to a dynamically created variable name
-        assign(
-          paste0("covid_totalHosp_data_", abbv, "_", selected_factor),
-          state_factor_filter,
-          envir = .GlobalEnv
-        )
-      }
-    }
-  }
-}
-
-
-# pt 2
-create_totalH_df_by_factor(data = covid_HHS_data_states_lagtemp %>% dplyr::select(-incidH, -incidH_prior_day), factor = "season") 
-
-create_incidH_df_by_factor(data = covid_HHS_data_states_lagtemp %>% dplyr::select(-total_hosp, -incidH_prior_day), factor_col = "season")
-
-# create_optimization_timevarying_by_factor(parent_data = covid_HHS_data_states_lagtemp, optimize_los, factor_col = "season") 
-
-# create_optimization_timevarying_by_factor_CI(parent_data = covid_HHS_data_states_lagtemp, optimize_los, factor_col = "season", sims = 2) 
-
-
+# this takes a couple hours to run, output is 100 LOS estimates for 2023 winter in Table 1 
+Sys.time()
 start_time <- Sys.time()
-create_optimization_timevarying_by_factor_parallel(parent_data = covid_HHS_data_states_lagtemp, factor_col = "season", sims = 1) 
+create_optimization_timevarying_by_factor_parallel(parent_data = covid_HHS_data_states_lagtemp %>% filter(year_szn == "2023_Winter"), factor_col = "year_szn", sims = 100) 
 end_time <- Sys.time()
 end_time - start_time
+Sys.time()
 
-write_csv(los_opt_by_state, "data/tables-figures-data/length-of-stay-estimates/historical-data/Table1_LOS_Szn_100sims.csv")
+write_csv(los_opt_by_state, "data/tables-figures-data/length-of-stay-estimates/historical-data/Table1_LOS_YearSzn_2023_Winter_100sims.csv")
 
+# Calculate CI from each of the LOS estimtates from written files with 100 sims for Table 1 
+
+
+# Define quantile probabilities
 quantile_probs <- c(
   0.010, 0.025, 0.050, 0.100, 0.150,
   0.200, 0.250, 0.300, 0.350, 0.400,
@@ -199,55 +133,157 @@ quantile_probs <- c(
   0.950, 0.975, 0.990
 )
 
+# Function to calculate quantiles
 calculate_quantiles <- function(data, quantile_probs) {
-  # Group by date and calculate quantiles for total_hosp_estimate
-  quantiles_by_date <- data %>%
-    group_by(state, date, forecast_date) %>%
+  data %>%
+    group_by(state, selected_strata) %>%
     summarise(
-      total_hosp_quantiles = list(quantile(total_hosp_estimate, probs = quantile_probs, na.rm = TRUE))
+      total_hosp_quantiles = list(quantile(optimized_los, probs = quantile_probs, na.rm = TRUE)),
+      .groups = "drop"
     ) %>%
     unnest_wider(total_hosp_quantiles, names_sep = "_") %>%
-    rename_with(
-      ~ paste0(quantile_probs), 
-      starts_with("total_hosp_quantiles_")
-    )
-  
-  return(quantiles_by_date)
+    rename_with(~ paste0("q", quantile_probs), starts_with("total_hosp_quantiles_"))
 }
 
+# Get list of CSV files
+csv_files <- list.files(
+  path = "data/tables-figures-data/length-of-stay-estimates/historical-data/",
+  pattern = "\\.csv$",
+  full.names = TRUE
+)
 
-# Apply the function to calculate quantiles
-quantiles_results <- calculate_quantiles(optimized_data_all_quantiles, quantile_probs)
+# Filter files created after June 5, 2025
+cutoff_date <- as.POSIXct("2025-06-05", tz = "UTC")
+file_info <- file.info(csv_files)
+csv_files_recent <- rownames(file_info[file_info$ctime > cutoff_date, ])
 
-quantile_cols <- as.character(quantile_probs)
+# Loop through recent files, apply function, and combine
+quantiles_results <- csv_files_recent %>%
+  map_df(~ {
+    los_opt_by_state <- read_csv(.x, show_col_types = FALSE)
+    calculate_quantiles(los_opt_by_state, quantile_probs) %>%
+      mutate(source_file = basename(.x))
+  })
 
-optimized_data_all_quantiles_temp <- quantiles_results %>% left_join(optimized_data_all_quantiles %>% select(state, date, total_hosp) %>%  distinct(), by = c("state", "date")) %>% 
-  mutate(n_simu = 100) 
-
-write_csv(los_opt_by_state, "data/tables-figures-data/length-of-stay-estimates/historical-data/Table1_LOS_Szn.csv")
-
-# pt 3
-create_totalH_df_by_factor(data = covid_HHS_data_states_lagtemp %>% dplyr::select(-incidH, -incidH_prior_day), factor = "respiratory_season") 
-
-# Create dataframes for each state with incident hospitalization data
-create_incidH_df_by_factor(data = covid_HHS_data_states_lagtemp %>% dplyr::select(-total_hosp, -incidH_prior_day), factor_col = "respiratory_season")
-
-start_time <- Sys.time()
-create_optimization_timevarying_by_factor_parallel(parent_data = covid_HHS_data_states_lagtemp, factor_col = "respiratory_season", sims = 100) 
-end_time <- Sys.time()
-end_time - start_time
+write_csv(quantiles_results, "data/tables-figures-data/length-of-stay-estimates/historical-data/quantile_results/Table1_Quantiles_SeasonYear.csv")
 
 
+# archive generate estimates for table 1 rows
+# create seasons estimates across all 4 years 
+# create_totalH_df_by_factor(data = covid_HHS_data_states_lagtemp %>% dplyr::select(-incidH, -incidH_prior_day), factor = "season") 
+# 
+# create_incidH_df_by_factor(data = covid_HHS_data_states_lagtemp %>% dplyr::select(-total_hosp, -incidH_prior_day), factor_col = "season")
+# 
+# start_time <- Sys.time()
+# create_optimization_timevarying_by_factor_parallel(parent_data = covid_HHS_data_states_lagtemp, factor_col = "season", sims = 1) 
+# end_time <- Sys.time()
+# end_time - start_time
+# 
+# write_csv(los_opt_by_state, "data/tables-figures-data/length-of-stay-estimates/historical-data/Table1_LOS_Szn_100sims.csv")
 
-write_csv(los_opt_by_state, "data/tables-figures-data/length-of-stay-estimates/historical-data/Table1_LOS_Waves_100sims.csv")
+# year season estimates 
+# 
+# 
+# start_time <- Sys.time()
+# create_optimization_timevarying_by_factor_parallel(parent_data = covid_HHS_data_states_lagtemp %>% filter(year_szn == "2023_Spring"), factor_col = "year_szn", sims = 100) 
+# end_time <- Sys.time()
+# end_time - start_time
+# Sys.time()
+# 
+# write_csv(los_opt_by_state, "data/tables-figures-data/length-of-stay-estimates/historical-data/Table1_LOS_YearSzn_2023_Spring_100sims.csv")
+# 
+# start_time <- Sys.time()
+# create_optimization_timevarying_by_factor_parallel(parent_data = covid_HHS_data_states_lagtemp %>% filter(year_szn == "2023_Summer"), factor_col = "year_szn", sims = 100) 
+# end_time <- Sys.time()
+# end_time - start_time
+# Sys.time()
+# 
+# write_csv(los_opt_by_state, "data/tables-figures-data/length-of-stay-estimates/historical-data/Table1_LOS_YearSzn_2023_Summer_100sims.csv")
+# 
+# start_time <- Sys.time()
+# create_optimization_timevarying_by_factor_parallel(parent_data = covid_HHS_data_states_lagtemp %>% filter(year_szn == "2023_Fall"), factor_col = "year_szn", sims = 100) 
+# end_time <- Sys.time()
+# end_time - start_time
+# Sys.time()
+# 
+# write_csv(los_opt_by_state, "data/tables-figures-data/length-of-stay-estimates/historical-data/Table1_LOS_YearSzn_2023_Fall_100sims.csv")
+# 
+# start_time <- Sys.time()
+# create_optimization_timevarying_by_factor_parallel(parent_data = covid_HHS_data_states_lagtemp %>% filter(year_szn == "2024_Winter"), factor_col = "year_szn", sims = 100) 
+# end_time <- Sys.time()
+# end_time - start_time
+# Sys.time()
+# 
+# write_csv(los_opt_by_state, "data/tables-figures-data/length-of-stay-estimates/historical-data/Table1_LOS_YearSzn_2024_Winter_100sims.csv")
+# 
+# start_time <- Sys.time()
+# create_optimization_timevarying_by_factor_parallel(parent_data = covid_HHS_data_states_lagtemp %>% filter(year_szn == "2024_Spring"), factor_col = "year_szn", sims = 100) 
+# end_time <- Sys.time()
+# end_time - start_time
+# Sys.time()
+# 
+# write_csv(los_opt_by_state, "data/tables-figures-data/length-of-stay-estimates/historical-data/Table1_LOS_YearSzn_2024_Spring_100sims.csv")
 
-create_optimization_timevarying_by_factor(parent_data = covid_HHS_data_states_lagtemp, optimize_los, factor_col = "respiratory_season") 
-# Create dataframes for each state with incident hospitalization data
+# 
+# quantile_probs <- c(
+#   0.010, 0.025, 0.050, 0.100, 0.150,
+#   0.200, 0.250, 0.300, 0.350, 0.400,
+#   0.450, 0.500, 0.550, 0.600, 0.650,
+#   0.700, 0.750, 0.800, 0.850, 0.900,
+#   0.950, 0.975, 0.990
+# )
+# 
+# calculate_quantiles <- function(data, quantile_probs) {
+#   # Group by date and calculate quantiles for total_hosp_estimate
+#   quantiles_by_date <- data %>%
+#     group_by(state, selected_strata) %>%
+#     summarise(
+#       total_hosp_quantiles = list(quantile(optimized_los, probs = quantile_probs, na.rm = TRUE))
+#     ) %>%
+#     unnest_wider(total_hosp_quantiles, names_sep = "_") %>%
+#     rename_with(
+#       ~ paste0(quantile_probs), 
+#       starts_with("total_hosp_quantiles_")
+#     )
+#   
+#   return(quantiles_by_date)
+# }
+# 
+# 
+# # Apply the function to calculate quantiles
+# quantiles_results <- calculate_quantiles(los_opt_by_state, quantile_probs)
+# 
+# quantile_cols <- as.character(quantile_probs)
+# 
+# optimized_data_all_quantiles_temp <- quantiles_results %>% left_join(optimized_data_all_quantiles %>% select(state, date, total_hosp) %>%  distinct(), by = c("state", "date")) %>% 
+#   mutate(n_simu = 100) 
+# 
+# write_csv(los_opt_by_state, "data/tables-figures-data/length-of-stay-estimates/historical-data/Table1_LOS_Szn.csv")
+# 
+# # pt 3
+# create_totalH_df_by_factor(data = covid_HHS_data_states_lagtemp %>% dplyr::select(-incidH, -incidH_prior_day), factor = "respiratory_season") 
+# 
+# # Create dataframes for each state with incident hospitalization data
+# create_incidH_df_by_factor(data = covid_HHS_data_states_lagtemp %>% dplyr::select(-total_hosp, -incidH_prior_day), factor_col = "respiratory_season")
+# 
+# start_time <- Sys.time()
+# create_optimization_timevarying_by_factor_parallel(parent_data = covid_HHS_data_states_lagtemp, factor_col = "respiratory_season", sims = 100) 
+# end_time <- Sys.time()
+# end_time - start_time
+# 
+# 
+# 
+# write_csv(los_opt_by_state, "data/tables-figures-data/length-of-stay-estimates/historical-data/Table1_LOS_Waves_100sims.csv")
+# 
+# create_optimization_timevarying_by_factor(parent_data = covid_HHS_data_states_lagtemp, optimize_los, factor_col = "respiratory_season") 
+# # Create dataframes for each state with incident hospitalization data
+# 
+# create_totalH_df_by_factor(data = covid_HHS_data_states_lagtemp %>% dplyr::select(-incidH, -incidH_prior_day), factor = "year_szn") 
+# 
+# create_incidH_df_by_factor(data = covid_HHS_data_states_lagtemp %>% dplyr::select(-total_hosp, -incidH_prior_day), factor_col = "year_szn")
+# 
+# create_optimization_timevarying_by_factor(parent_data = covid_HHS_data_states_lagtemp, optimize_los, factor_col = "year_szn") 
+# 
+# write_csv(los_opt_by_state, "data/tables-figures-data/length-of-stay-estimates/historical-data/Table1_LOS_YearSzn.csv")
+# 
 
-create_totalH_df_by_factor(data = covid_HHS_data_states_lagtemp %>% dplyr::select(-incidH, -incidH_prior_day), factor = "year_szn") 
-
-create_incidH_df_by_factor(data = covid_HHS_data_states_lagtemp %>% dplyr::select(-total_hosp, -incidH_prior_day), factor_col = "year_szn")
-
-create_optimization_timevarying_by_factor(parent_data = covid_HHS_data_states_lagtemp, optimize_los, factor_col = "year_szn") 
-
-write_csv(los_opt_by_state, "data/tables-figures-data/length-of-stay-estimates/historical-data/Table1_LOS_YearSzn.csv")
