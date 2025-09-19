@@ -1,16 +1,16 @@
 ---
 title: "Hospital Burden Estimation: Using Reported Incid Hospitalization Data and Mathematical Optimization of Hospital Length of Stay (LOS)"
-author: "Your Name"
+author: 
 date: "`r format(Sys.Date())`"
 output:
+  pdf_document:
+    number_sections: true
   html_document:
     toc: true
     toc_depth: 3
     toc_float: true
     number_sections: true
     code_folding: show
-  pdf_document:
-    number_sections: true
 fontsize: 11pt
 editor_options:
   chunk_output_type: console
@@ -110,7 +110,7 @@ covid_US <- covid_HHS_data_states %>%
     incidH_prior_day = sum(incidH_prior_day, na.rm = TRUE)
   )
 
-ggplot(covid_US, aes(x = date, y = total_hosp)) +
+ggplot(covid_US, aes(x = date, y = incidH_prior_day)) +
   geom_line() +
   labs(
     title = "U.S. COVID-19 Hospital Occupancy (HHS)",
@@ -324,6 +324,36 @@ ggplot(census_df, aes(date, census, color = factor(los_param))) +
 
 ```
 
+
+```{r}
+# run this multiple times to visualize how the daily estimates for length of stay change introducing variability into hospital burden estimates on the same set of data 
+plot_one_run <- function(incidH = 150,
+                         origin = as_date("2025-01-01"),
+                         los = 5) {
+  # Expand one-day admissions into occupied-bed dates
+  dates <- burden_est_funct(incidH = incidH, date = origin, los = los)
+
+  # Count current hospitalizations by calendar date
+  occupancy <- tibble(date = dates) |>
+    filter(date >= origin) |>
+    count(date, name = "current_hosp")
+
+  ggplot(occupancy, aes(date, current_hosp)) +
+    geom_line() +
+    geom_point(size = 0.8) +
+    labs(
+      title = "Single run: occupancy from one-day admissions",
+      subtitle = paste0("incidH = ", incidH,
+                        ", LOS ~ NegBin(size = ", los, ", prob = 0.5)"),
+      x = NULL, y = "Current hospitalizations"
+    ) +
+    theme_minimal(base_size = 12)
+}
+
+# Run once; re-run this line to see a new random path each time:
+plot_one_run(incidH = 150, origin = as_date("2025-01-01"), los = 5)
+```
+
 ## Build Per-State Data Frames for Observed vs. Incident Series by Strata
 
 This creates dataframes for each strata / state (in this case US x season for Season Overall LOS values in Table 1 in google drive)
@@ -363,8 +393,8 @@ create_totalH_df_by_factor <- function(data, factor_col) {
 
 ```{r build-by-factor}
 # For this tutorial demonstrate with the `season` strata.
-create_totalH_df_by_factor(data = covid_HHS_data_states_lagtemp %>% dplyr::select(-incidH, -incidH_prior_day) %>% filter(state == "US"), factor_col = "season")
-create_incidH_df_by_factor(data = covid_HHS_data_states_lagtemp %>% dplyr::select(-total_hosp, -incidH_prior_day) %>% filter(state == "US"), factor_col = "season")
+create_totalH_df_by_factor(data = covid_HHS_data_states_lagtemp %>% dplyr::select(-incidH, -incidH_prior_day), factor_col = "season")
+create_incidH_df_by_factor(data = covid_HHS_data_states_lagtemp %>% dplyr::select(-total_hosp, -incidH_prior_day), factor_col = "season")
 ```
 
 # LOS Optimization (Parallel, by Strata)
@@ -426,7 +456,7 @@ create_optimization_timevarying_by_factor_parallel <- function(parent_data, fact
 
 ```{r run-parallel}
 sims_default <- 1 # for short run time in example, table 1 uses 100 sims 
-start_time <- Sys.time(). # for tracking run time 
+start_time <- Sys.time() # for tracking run time
 los_opt_by_state <- create_optimization_timevarying_by_factor_parallel(
   parent_data = covid_HHS_data_states_lagtemp,
   factor_col = "season",
