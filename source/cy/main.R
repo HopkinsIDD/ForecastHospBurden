@@ -156,11 +156,12 @@ plot_data |>
     alpha = 0.01
   ) +
   scale_color_manual(
-    values = c("Actual" = "black", "Predicted" = "orange")
+    values = c("Actual" = "black", "Predicted" = "orange"),
+    guide = guide_legend(override.aes = list(alpha = 1, size = 3))
   ) +
   scale_y_continuous(labels = scales::comma_format()) +
   labs(
-    title = "Actual vs Predicted Active Hospitalisations",
+    title = "Actual vs Predicted Active Hospitalisations: Summer 2023",
     y = "Active Hospitalisations",
     x = "Date",
     colour = ""
@@ -173,16 +174,24 @@ plot_data |>
   )
 
 
-# Plot parameter estimates with CIs
+# Plot bootstrapped parameter estimates
+library(ggridges)
 fits_with_ci |>
+  select(state, season_year, boot_params) |>
   filter(season_year == "summer_2023") |>
-  ggplot(aes(x = reorder(state, mu), y = mu)) +
-  geom_point() +
-  geom_errorbar(
-    aes(ymin = mu_lower, ymax = mu_upper),
-    width = 0.2,
+  mutate(boot_params = map(boot_params, ~ as.data.frame(.x))) |>
+  unnest(boot_params) |>
+  rename(mu = V1, k = V2) |>
+  mutate(state = fct_reorder(state, mu, .fun = mean, .desc = TRUE)) |>
+  ggplot(aes(x = mu, y = state, fill = stat(x))) +
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01) +
+  scale_fill_viridis_c(name = "Density", option = "C") +
+  labs(
+    title = "Distribution of Bootstrapped Mu Estimates: Summer 2023",
+    x = "Mu",
+    y = "State"
   ) +
-  coord_flip()
+  theme_ridges()
 
 # --- Sanity Check Residuals with ACF ---
 ca_summer_23 <- fits |> filter(state == "CA", season_year == "summer_2023")
@@ -199,6 +208,7 @@ library(scoringutils)
 # forecast type: "sample"
 # sample: a probabilistic forecast for a continuous or discrete outcome variable, with the forecast represented by a finite set of samples drawn from the predictive distribution.
 
+states_sample <- sample(unique(df$state), 5)
 fcast <- plot_data |>
   transmute(
     state,
@@ -210,7 +220,7 @@ fcast <- plot_data |>
     observed = active_hosp,
     predicted = boot_pred
   ) |>
-  filter(season_year == "summer_2023", state %in% c("CA", "TX")) |>
+  filter(season_year == "summer_2023", state %in% states_sample) |>
   group_by(state, season_year, date) |>
   as_forecast_sample(
     sample_id = "sample_id"
@@ -219,8 +229,7 @@ fcast <- plot_data |>
 # sanity check
 fcast |>
   group_by(state, season_year, date) |>
-  count() |>
-  view()
+  count()
 
 scores <- fcast |>
   score() |>
@@ -228,3 +237,20 @@ scores <- fcast |>
 
 get_log()
 summarise_scores(scores, by = c("state"))
+
+scores |>
+  plot_heatmap(metric = "crps", x = "date", y = "state")
+
+scores |>
+  summarise_scores(by = c("state")) |>
+  plot_wis(x = "state")
+
+# scores |>
+#   get_pairwise_comparisons(compare = "state") |>
+#   scoringutils::plot_pairwise_comparisons()
+# fcast |>
+#   scoringutils::get_pit_histogram(by = "state", integers = "random", n_replicates = 10) |>
+#   ggplot(aes(x = mid, y = density)) +
+#   geom_col() +
+#   facet_wrap(~state, scales = "free_y") +
+#   theme_classic()
