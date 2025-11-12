@@ -1,13 +1,15 @@
-# --- SetUp ---
-library(tidyverse)
-library(furrr)
-library(arrow)
-library(geofacet)
-library(hydroTSM) # for time2season()
-library(pipetime) # devtools::install_github("CyGei/pipetime")
+# -------------------------------------
+#           Setup
+# -------------------------------------
+set.seed(123)
 options(pipetime.log = "log", pipetime.unit = "secs")
-source(here::here("source/cy/helpers.R"))
-# --- Data ---
+plan(multisession, workers = availableCores() - 2)
+list.files(here::here("source/cy/helpers"), full.names = TRUE) |>
+  purrr::walk(source)
+
+# -------------------------------------
+#           Data
+# -------------------------------------
 df <- #read_csv("https://healthdata.gov/resource/g62h-syeh.csv") |>
   arrow::read_parquet(
     here::here(
@@ -30,12 +32,9 @@ df <- #read_csv("https://healthdata.gov/resource/g62h-syeh.csv") |>
   drop_na()
 df
 
-
-# --- Fitting using SSE ---
-plan(multisession, workers = availableCores() - 2)
-set.seed(123)
-
-# Estimate parameters for each state and season
+# -------------------------------------
+#           initial fit
+# -------------------------------------
 fits <- df |>
   mutate(
     season_year = paste0(
@@ -65,43 +64,9 @@ fits <- df |>
   select(-params) |>
   time_pipe("fitting")
 
-# Predictions from fitted parameters
-predictions <- fits |>
-  group_by(state, season_year) |>
-  unnest(data) |>
-  mutate(
-    predicted_hosp = predictH(
-      mu = mu,
-      k = k,
-      admissions = admissions
-    )
-  ) |>
-  ungroup()
-
-predictions |>
-  filter(season_year == "summer_2023") |>
-  ggplot(aes(x = date)) +
-  geofacet::facet_geo(~state, grid = "us_state_grid1", scales = "free_y") +
-  geom_line(aes(y = active_hosp, color = "Actual")) +
-  geom_line(aes(y = predicted_hosp, color = "Predicted")) +
-  scale_color_manual(
-    values = c("Actual" = "black", "Predicted" = "orange")
-  ) +
-  scale_y_continuous(labels = scales::comma_format()) +
-  labs(
-    title = "Actual vs Predicted Active Hospitalisations",
-    y = "Active Hospitalisations",
-    x = "Date",
-    colour = ""
-  ) +
-  theme_classic() +
-  theme(
-    legend.position = "bottom",
-    axis.ticks.x = element_blank(),
-    axis.text.x = element_blank()
-  )
-
-# --- Bootstrap for CIs ---
+# -------------------------------------
+#           Bootstrap CIs
+# -------------------------------------
 fits_with_ci <- fits |>
   mutate(
     boot_params = future_pmap(
@@ -129,10 +94,11 @@ fits_with_ci <- fits |>
   ) |>
   time_pipe("bootstrapping")
 
-get_log()
-
-# --- Plotting Ribbon ---
-plot_data <- fits_with_ci |>
+# -------------------------------------
+#           Visualisations
+# -------------------------------------
+# --------- Observed vs BootPredicted ---------
+fits_with_ci |>
   select(state, season_year, data, boot_preds) |>
   group_by(state, season_year) |>
   mutate(
@@ -143,9 +109,7 @@ plot_data <- fits_with_ci |>
     cols = starts_with("V"), # will be V1 ... Vn
     names_to = "bootstrap_id",
     values_to = "boot_pred"
-  )
-
-plot_data |>
+  ) |>
   filter(season_year == "summer_2023") |>
   ggplot(aes(x = date)) +
   geofacet::facet_geo(~state, grid = "us_state_grid1", scales = "free_y") +
@@ -174,24 +138,93 @@ plot_data |>
   )
 
 
-# Plot bootstrapped parameter estimates
-library(ggridges)
-fits_with_ci |>
+mk_data <- fits_with_ci |>
   select(state, season_year, boot_params) |>
   filter(season_year == "summer_2023") |>
   mutate(boot_params = map(boot_params, ~ as.data.frame(.x))) |>
   unnest(boot_params) |>
   rename(mu = V1, k = V2) |>
   mutate(state = fct_reorder(state, mu, .fun = mean, .desc = TRUE)) |>
-  ggplot(aes(x = mu, y = state, fill = stat(x))) +
-  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01) +
-  scale_fill_viridis_c(name = "Density", option = "C") +
-  labs(
-    title = "Distribution of Bootstrapped Mu Estimates: Summer 2023",
-    x = "Mu",
-    y = "State"
+  pivot_longer(cols = c(mu, k), names_to = "parameter", values_to = "value") |>
+  mutate(parameter = factor(parameter, levels = c("mu", "k")))
+
+
+ggplot() +
+  facet_grid(
+    cols = vars(parameter),
+    scales = "free_x"
   ) +
-  theme_ridges()
+  geom_density_ridges_gradient(
+    data = mk_data |> filter(parameter == "mu"),
+    aes(y = state, x = value, height = ..density..),
+    stat = "density",
+    trim = TRUE,
+    col = NA,
+    fill = "#0D0887FF",
+    alpha = 0.8
+  ) +
+  geom_errorbarh(
+    data = mk_data |>
+      filter(parameter == "k") |>
+      group_by(state, parameter) |>
+      summarise(
+        median_k = median(value),
+        lower_k = quantile(value, 0.025),
+        upper_k = quantile(value, 0.975)
+      ),
+    aes(y = state, x = median_k, xmin = lower_k, xmax = upper_k),
+    height = 0.3,
+    color = "black"
+  ) +
+  ggh4x::facetted_pos_scales(
+    x = list(
+      parameter == "k" ~ scale_x_continuous(limits = c(0, 5)),
+      parameter == "mu" ~ scale_x_continuous(limits = c(0, 15))
+    )
+  ) +
+  coord_cartesian(xlim = c(0, 15), clip = "off") +
+  labs(
+    title = "Distribution of Bootstrapped Estimates: Summer 2023",
+    x = "parameter value",
+    y = "state"
+  ) +
+  theme(
+    strip.background = element_rect(fill = "white", color = "black"),
+    strip.text = element_text(face = "bold", size = 12)
+  )
+
+ggplot(mk_data) +
+  facet_grid(
+    cols = vars(parameter),
+    scales = "free_x",
+    labeller = labeller(
+      parameter = c(
+        "mu" = "μ",
+        "k" = "k"
+      )
+    )
+  ) +
+  geom_density_ridges(
+    aes(y = state, x = value),
+    fill = "#0D0887FF",
+    stat = "density_ridges",
+    trim = TRUE,
+    col = NA,
+    alpha = 0.8
+  ) +
+  coord_cartesian(clip = "off") +
+  labs(
+    title = "Distribution of Bootstrapped Estimates: Summer 2023",
+    x = "parameter value",
+    y = "state"
+  ) +
+  theme_bw() +
+  theme(
+    strip.background = element_rect(fill = "white", color = "black"),
+    strip.text = element_text(face = "bold", size = 12),
+    legend.position = "none"
+  )
+
 
 # --- Sanity Check Residuals with ACF ---
 ca_summer_23 <- fits |> filter(state == "CA", season_year == "summer_2023")
@@ -254,3 +287,5 @@ scores |>
 #   geom_col() +
 #   facet_wrap(~state, scales = "free_y") +
 #   theme_classic()
+
+library(yardstick)
