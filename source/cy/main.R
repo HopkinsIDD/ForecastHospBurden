@@ -238,10 +238,30 @@ acf(residuals, main = "ACF of Residuals for CA Summer 2023")
 
 # --- scoringutils ---
 library(scoringutils)
+
 # forecast type: "sample"
 # sample: a probabilistic forecast for a continuous or discrete outcome variable, with the forecast represented by a finite set of samples drawn from the predictive distribution.
+#=============================
+# Example Plot with Prediction Ribbon
+#=============================
+plot_data <- fits_with_ci |>
+  select(state, season_year, data, boot_preds) |>
+  group_by(state, season_year) |>
+  mutate(
+    boot_preds = map(boot_preds, ~ as_tibble(.x))
+  ) |>
+  unnest(c(data, boot_preds)) |>
+  pivot_longer(
+    cols = starts_with("V"), # will be V1 ... Vn
+    names_to = "bootstrap_id",
+    values_to = "boot_pred"
+  )
+plot_data |>
+  filter(season_year == "summer_2020") |>
+  group_by(state) |>
+  mutate(start_date = min(date), cut_off = start_date + 7)
 
-states_sample <- sample(unique(df$state), 5)
+states_sample <- sample(unique(df$state), 2)
 fcast <- plot_data |>
   transmute(
     state,
