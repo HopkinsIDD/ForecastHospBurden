@@ -1,14 +1,20 @@
 # Forecasting Hospital Burden from COVID-19
 
-Estimate hospital length of stay (LOS) for COVID-19 across US states using a convolution model.
+Turn hospital **admission** forecasts into hospital **census** forecasts, using a length-of-stay (LOS) distribution fitted per state and respiratory season.
 
 ---
 
-## Overview
+## Goal
 
-The goal is to answer: **given daily hospital admissions, how well can we predict the number of people currently in hospital using a parametric LOS distribution?**
+Given daily admissions, how many people are in the hospital today?
 
-By fitting different distributions (negative binomial, normal, etc.) we recover the LOS parameters that best explain observed hospital census data — and compare which distributional family fits best.
+If we know how long patients stay, the census is just past admissions weighted by the chance each is still hospitalised:
+
+$$
+\text{census}(t) = \sum_{s \le t} \text{admissions}(s) \cdot P(\text{LOS} > t - s)
+$$
+
+We fit the LOS from historical admissions + census, then apply it to admission *forecasts* to get census forecasts.
 
 ---
 
@@ -16,19 +22,11 @@ By fitting different distributions (negative binomial, normal, etc.) we recover 
 
 ```mermaid
 flowchart TD
-    A["<b>HHS Dataset</b><br/>admissions + census per state per day"] --> B["<b>Convolution Model</b><br/>predicted census = admissions ∗ P(LOS > t)"]
-    B --> C["<b>Optimisation</b><br/>minimise SSE via L-BFGS-B<br/>one fit per state"]
-    C --> D["<b>Bootstrap</b><br/>resample residuals × 100<br/>→ parameter distributions + 95% CI"]
-    C --> E["<b>Model Comparison</b><br/>AIC = n·log(SSE/n) + 2k<br/>across distribution families"]
-    D --> F["<b>Output</b><br/>LOS parameters with uncertainty<br/>predicted vs observed census"]
-    E --> F
-
-    style A fill:#f0f4ff,stroke:#4a6fa5
-    style B fill:#fff8e1,stroke:#e6a817
-    style C fill:#e8f5e9,stroke:#4caf50
-    style D fill:#fce4ec,stroke:#e57373
-    style E fill:#fce4ec,stroke:#e57373
-    style F fill:#f3e5f5,stroke:#ab47bc
+    A["<b>HHS data</b><br/>daily admissions + census per state"] --> B["<b>Fit LOS</b><br/>negbin per state × season<br/>(minimise SSE)"]
+    C["<b>Hubverse admission forecast</b><br/>quantile paths per state"] --> D["<b>Convolve</b><br/>admissions ∗ P(LOS > t)<br/>using previous season's LOS"]
+    B --> D
+    D --> E["<b>Census forecast</b><br/>quantile paths per state"]
+    E --> F["<b>Validate</b><br/>fan chart · WIS by horizon"]
 ```
 
 ---
@@ -37,77 +35,66 @@ flowchart TD
 
 | Field | Description |
 |---|---|
-| **Source** | [HHS COVID-19 Reported Patient Impact and Hospital Capacity](https://healthdata.gov/Hospital/COVID-19-Reported-Patient-Impact-and-Hospital-Capa/g62h-syeh) |
-| **admissions** | Daily new confirmed COVID-19 hospital admissions (adult + pediatric) |
-| **active_hosp** | Total confirmed COVID-19 inpatients on that day (adult + pediatric) |
-| **Granularity** | Daily, per US state |
+| Source | [HHS COVID-19 Reported Patient Impact and Hospital Capacity](https://healthdata.gov/Hospital/COVID-19-Reported-Patient-Impact-and-Hospital-Capa/g62h-syeh) |
+| `admissions` | Daily new confirmed COVID hospital admissions (adult + pediatric) |
+| `census` | Total confirmed COVID inpatients (adult + pediatric) |
+| Granularity | Daily, per US state |
 
 ---
 
 ## Model
 
-The core idea is a **discrete-time convolution**:
+A parametric **negative-binomial LOS** (mean $\mu$, dispersion $\k$). The survival function $P(\text{LOS} > k)$ is convolved with admissions to predict census.
 
-$$
-\hat{C}_t = \sum_{s=0}^{T} A_{t-s} \cdot P(\text{LOS} > s)
-$$
+Other families (normal, lognormal, geometric) live in `distributions.R` for the accessory comparison; the production pipeline uses negbin only.
 
-where:
-- $\hat{C}_t$ is the predicted hospital census on day $t$
-- $A_{t-s}$ is the number of admissions $s$ days ago
-- $P(\text{LOS} > s)$ is the survival function — the probability a patient is still hospitalised after $s$ days
-
-The survival function is **parametric and modular**. Any distribution can be plugged in by defining a `dist_*` list with a survival function, initial parameters, and bounds:
-
-| Distribution | Parameters | # params |
-|---|---|---|
-| Negative binomial | mean ($\mu$), dispersion ($k$) | 2 |
-| Normal | mean ($\mu$), std dev ($\sigma$) | 2 |
-| Lognormal | log-mean, log-sd | 2 |
-| Geometric | mean ($\mu$) | 1 |
-
-The first 50 days of each state's time series are used as a **warm-up prefix** — included in the convolution so early predictions aren't distorted by missing history, but excluded from the loss function.
+**`MAX_STAY = 50` days** ties together three things:
+- length of the LOS survival vector,
+- days discarded at the start of each state-season when fitting (census in this period depends on unobserved prior admissions),
+- days of observed admissions prepended before each forecast, so the first forecast day already has a full 50-day history.
 
 ---
 
 ## Fitting
 
-Parameters are estimated by **minimising sum of squared errors (SSE)** between observed and predicted census using the L-BFGS-B optimiser. Parameters that must be positive (e.g., mean, dispersion) are optimised on the log scale to enforce constraints.
+For each (state, season), minimise SSE between observed and predicted census using L-BFGS-B. Parameters are optimised in log space to stay positive. Uncertainty comes from a **residual bootstrap**: resample residuals, refit, repeat 100 times.
 
 ---
 
-## Uncertainty
+## Out-of-sample forecasting
 
-Parameter uncertainty is estimated via **residual bootstrap**:
-
-1. Compute residuals from the point estimate fit
-2. Resample residuals with replacement
-3. Add resampled residuals to predicted census to create a synthetic series
-4. Re-fit the model on the synthetic series
-5. Repeat 100 times → bootstrap distribution of parameters
-
-This yields **95% prediction intervals** for the census curve.
+We forecast census using LOS estimates from the previous season for a given state.
+To forecast into **Winter 2024-25** we use the **Winter 2023-24** LOS fit; for **Summer 2024** we use **Summer 2023**.
 
 ---
 
-## Model Comparison
+## Validation
 
-Distributions are compared using **AIC**:
-
-$$
-\text{AIC} = n \cdot \log\!\left(\frac{\text{SSE}}{n}\right) + 2k
-$$
-
-where $n$ is the number of fitted observations and $k$ is the number of parameters. Lower AIC indicates a better trade-off between fit and complexity. Since all models are fit on the same data per state, AIC values are directly comparable.
+- **Fan chart** per (state, forecast_date): 50% + 95% prediction intervals for admissions and census, with observed overlaid.
+- **WIS by horizon** via `scoringutils`, averaged per state.
 
 ---
 
-## Project Structure
+## Project structure
 
 ```
 source/
-├── main.R              # end-to-end pipeline: data → fit → compare → plot
+├── main.R                 # end-to-end pipeline
 └── helpers/
-    ├── packages.R      # library imports
-    └── helpers.R       # dist_* definitions, convolution, fitting, bootstrap
+    ├── packages.R         # library imports
+    ├── data.R             # load_hhs(), load_hub()
+    ├── seasons.R          # season_of(), previous_season()
+    ├── distributions.R    # MAX_STAY + dist_* survival kernels
+    ├── los.R              # predict_census(), fit_los(), fit_los_all()
+    ├── forecast.R         # forecast_from_hub(), forecast_from_truth()
+    ├── baseline.R         # baseline_from_observed() — rWIS reference
+    ├── score.R            # score_forecast(), relative_wis(), WIS/rWIS plots
+    └── plots.R            # plot_trajectories()
 ```
+
+### NOTE FOR REVIEW
+Convolution of quantiles holds exactly only if the admission-quantile paths are comonotonic across time (each quantile level is one coherent trajectory). The hub gives you per-date marginal quantiles, so you're implicitly assuming perfect rank correlation across horizons. That's the standard hub convention.
+
+We are implicitly assuming:
+The same trajectory sits at the same quantile level at every time point.
+That is perfect rank correlation across time.
