@@ -5,23 +5,21 @@
 # length-of-stay (LOS) distribution per state and season, then using
 # the previous season's LOS on new forecasts.
 #
-#   census(t) = sum over s <= t of admissions(s) * P(LOS > t - s)
+# census(t) = Σ admissions(s) · P(LOS > t − s)
+# today's census is yesterday's and earlier days' admissions, each
+# weighted by the chance that patient is still in the hospital.
 #
-# Flow:
-#   1. data       observed admissions + census, and hub admission forecasts.
-#   2. fit        LOS per (state, season).
-#   3. forecast   five quantile forecasts, stacked:
-#                   ensemble+LOS   hub admissions -> previous-season LOS.
-#                   truth+LOS      observed adms  -> previous-season LOS.
-#                                  (LOS-model ceiling.)
-#                   ensemble       raw hub admission forecast.
-#                   baseline       naive flat forecast per target,
-#                                  used as the reference for rWIS.
-#   4. score      WIS and relative WIS (WIS / baseline WIS). rWIS is
-#                 dimensionless so census and admissions models can be
-#                 compared directly.
-#   5. visualise  trajectories, raw WIS, rWIS.
+# 1. Learn LOS. Using HHS daily admissions + census per state,
+# fit a negative-binomial LOS survival curve P(LOS > d) per state × respiratory season
+# by minimizing SSE between observed census and the convolution of admissions with that curve. A residual bootstrap (100 resamples) gives parameter uncertainty.
 
+# 2. Apply it to the future. Take the COVIDhub admission forecast
+# (quantile paths, 14-day horizon),
+# and for each quantile level convolve that admission path with
+# the previous same-kind season's LOS curve.
+# Output: a census quantile forecast on the same grid.
+
+# 3.
 # --- Setup ---------------------------------------------------------------
 list.files(here::here("source/helpers"), full.names = TRUE) |>
   purrr::walk(source)
@@ -34,67 +32,71 @@ hhs <- load_hhs()
 hub <- load_hub()
 
 # --- 2. Fit LOS per (state, season) --------------------------------------
-los_fits <- fit_los_all(hhs, dist_negbin, min_fit_days = 30)
+los_fits <-
+  hhs |>
+  mutate(season_year = season_of(date)) |>
+  nest(.by = c(state, season_year)) |>
+  filter(map_int(data, nrow) >= MAX_STAY + 30L) |>
+  mutate(
+    res = future_map(
+      data,
+      fit_los,
+      dist_negbin,
+      .options = furrr_options(seed = TRUE)
+    )
+  ) |>
+  unnest_wider(res) |>
+  unnest_wider(params)
 
-# --- 3. Forecast all models into one tibble ------------------------------
+# --- 3. Forecast both models into one tibble ----------------------------
+# ensemble_LOS = WIS given the predicted admission forecast.
+# truth_LOS    = WIS if admissions were perfectly known.
 forecasts <- bind_rows(
   forecast_from_hub(hub, hhs, los_fits) |>
-    mutate(model = "ensemble+LOS", target = "census"),
-  forecast_from_truth(hub, hhs, los_fits, dist_negbin) |>
-    mutate(model = "truth+LOS", target = "census"),
-  hub |>
-    mutate(model = "ensemble", target = "admissions"),
-  baseline_from_observed(hhs, hub, "census") |>
-    mutate(model = "baseline", target = "census"),
-  baseline_from_observed(hhs, hub, "admissions") |>
-    mutate(model = "baseline", target = "admissions")
+    mutate(model = "ensemble_LOS", target = "census"),
+  forecast_from_truth(hub, hhs, los_fits) |>
+    mutate(model = "truth_LOS", target = "census")
 )
 
 # --- 4. Score ------------------------------------------------------------
 scores <- score_forecast(forecasts, hhs)
-rel <- relative_wis(scores, baseline = "baseline")
 
 # --- 5. Visualise --------------------------------------------------------
-plot_trajectories("CA", "admissions", forecasts, hhs)
-plot_trajectories("CA", "census", forecasts, hhs)
+plot_trajectories("NY", forecasts, hhs, horizon = 14L)
 
-# within census target
-scores |>
+
+# WIS by horizon
+# truth_LOS = the best possible census forecast if LOS were perfectly known. T
+# The gap between ensemble_LOS and truth_LOS is the admission-attributable error,
+# which can only be reduced by improving the upstream admission forecast.
+wis_by_horizon <- scores |>
   summarise(
     wis = mean(wis, na.rm = TRUE),
-    .by = c(model, target, location, horizon)
+    .by = c(model, location, horizon)
   ) |>
-  filter(target == "census", model != "baseline") |>
-  ggplot(aes(horizon, wis, colour = model)) +
-  geom_line() +
-  facet_wrap(~location, scales = "free_y") +
-  scale_x_continuous(breaks = seq(1, 14, 3)) +
-  labs(x = "Horizon (days)", y = "Mean WIS", colour = NULL, linetype = NULL) +
-  theme_bw() +
-  theme(
-    strip.text = element_text(size = 6),
-    axis.text = element_text(size = 5),
-    panel.grid.minor = element_blank(),
-    legend.position = "bottom"
-  )
+  pivot_wider(names_from = model, values_from = wis)
 
-# across targets
-rel |>
-  as_tibble() |>
-  filter(
-    (target == "census" & model == "ensemble+LOS") |
-      (target == "admissions" & model == "ensemble")
+
+wis_by_horizon |>
+  mutate(
+    truth_LOS = truth_LOS,
+    ensemble_LOS = pmax(ensemble_LOS - truth_LOS, 0)
   ) |>
-  ggplot(aes(horizon, rwis, colour = model)) +
-  geom_hline(yintercept = 1, linetype = "dashed", colour = "grey50") +
-  geom_line() +
+  pivot_longer(
+    c(truth_LOS, ensemble_LOS),
+    names_to = "source",
+    values_to = "wis"
+  ) |>
+  ggplot(aes(horizon, wis, fill = source)) +
+  geom_col(position = position_stack(reverse = FALSE)) +
   facet_wrap(~location, scales = "free_y") +
   scale_x_continuous(breaks = seq(1, 14, 3)) +
+
   labs(
     x = "Horizon (days)",
-    y = "Relative WIS (model / baseline)",
-    colour = NULL,
-    linetype = NULL
+    y = "Mean WIS (census)",
+    fill = NULL,
+    title = "Census error decomposition",
   ) +
   theme_bw() +
   theme(

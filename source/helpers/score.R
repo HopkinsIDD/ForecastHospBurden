@@ -1,9 +1,9 @@
 # =============================================
-#   Scoring + WIS plots
+#   Scoring
 # =============================================
 # `forecasts` is a long tibble with:
-#   model         "ensemble+LOS", "truth+LOS", "ensemble", "baseline", ...
-#   target        "census" or "admissions"
+#   model         "ensemble+LOS", "truth+LOS"
+#   target        "census"
 #   state, forecast_date, target_end_date, quantile, value
 
 # Join each forecast row with its matching observed value and score WIS.
@@ -31,22 +31,4 @@ score_forecast <- function(forecasts, hhs) {
     ) |>
     as_forecast_quantile() |>
     score()
-}
-
-# Relative WIS = WIS(model) / WIS(baseline), per (target, location,
-# horizon). Baseline rows are removed from the output. rWIS < 1 means
-# the model beats the baseline on that cell.
-relative_wis <- function(scores, baseline = "baseline") {
-  means <- scores |>
-    summarise(
-      wis = mean(wis, na.rm = TRUE),
-      .by = c(model, target, location, horizon)
-    )
-  base <- means |>
-    filter(model == baseline) |>
-    select(target, location, horizon, wis_baseline = wis)
-  means |>
-    filter(model != baseline) |>
-    inner_join(base, by = c("target", "location", "horizon")) |>
-    mutate(rwis = wis / wis_baseline)
 }

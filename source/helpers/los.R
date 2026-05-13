@@ -4,7 +4,7 @@
 # Core identity:
 #   census(t) = sum over s <= t of admissions(s) * P(LOS > t - s)
 #
-# We fit the survival curve P(LOS > k) so that its convolution with
+# We fit the survival curve P(LOS > d) so that its convolution with
 # observed admissions matches observed census. A residual bootstrap
 # gives parameter uncertainty, used later when the admission input is
 # deterministic (the "truth+LOS" path).
@@ -12,7 +12,9 @@
 # Predicted census from admissions and a survival curve.
 # Non-finite outputs (from bad parameters during optim) are set to 0.
 predict_census <- function(survival, admissions) {
-  pred <- convolve(admissions, rev(survival), type = "open")[seq_along(admissions)]
+  pred <- convolve(admissions, rev(survival), type = "open")[seq_along(
+    admissions
+  )]
   pred[!is.finite(pred)] <- 0
   pred
 }
@@ -50,12 +52,19 @@ bootstrap_residual <- function(data, params_hat, los_dist, skip, n_boot = 100) {
 
   for (i in seq_len(n_boot)) {
     boot_census <- data$census
-    boot_census[idx] <- pmax(predicted[idx] + sample(resid, length(idx), TRUE), 0)
+    boot_census[idx] <- pmax(
+      predicted[idx] + sample(resid, length(idx), TRUE),
+      0
+    )
     fit <- optim(
-      par = log_params, fn = los_sse,
-      admissions = data$admissions, census = boot_census,
-      surv_fn = los_dist$surv_fn, skip = skip,
-      lower = los_dist$lower, method = "L-BFGS-B"
+      par = log_params,
+      fn = los_sse,
+      admissions = data$admissions,
+      census = boot_census,
+      surv_fn = los_dist$surv_fn,
+      skip = skip,
+      lower = los_dist$lower,
+      method = "L-BFGS-B"
     )
     boot_params[i, ] <- exp(fit$par)
   }
@@ -67,37 +76,47 @@ bootstrap_residual <- function(data, params_hat, los_dist, skip, n_boot = 100) {
 #   n_boot  residual bootstrap iterations.
 #
 # Returns:
-#   params       point estimate on the natural scale
-#   survival     P(LOS > k) vector at the point estimate
-#   boot_params  n_boot x n_params matrix of bootstrap draws
-#   sse          loss at the point estimate
-#   n_fit        number of days used in the loss
-#   ci           tibble with pointwise 95% prediction bands over the
-#                fit window: (date, observed, lower, median, upper)
+#   params          point estimate on the natural scale
+#   survival        P(LOS > d) vector at the point estimate
+#   boot_params     n_boot x n_params matrix of bootstrap parameter
+#                   draws. Kept for parameter-space diagnostics
+#                   (e.g. misc/ridge_plots.R).
+#   boot_survivals  (MAX_STAY+1) x n_boot matrix of bootstrap survival
+#                   vectors. Computed here so forecast time only needs
+#                   to read survival curves, never re-evaluate the
+#                   distribution kernel.
+#   sse             loss at the point estimate
+#   n_fit           number of days used in the loss
+#   ci              tibble with pointwise 95% prediction bands over the
+#                   fit window: (date, observed, lower, median, upper)
 fit_los <- function(data, los_dist, skip = MAX_STAY, n_boot = 100) {
   fit <- optim(
-    par = los_dist$init, fn = los_sse,
-    admissions = data$admissions, census = data$census,
-    surv_fn = los_dist$surv_fn, skip = skip,
-    lower = los_dist$lower, method = "L-BFGS-B"
+    par = los_dist$init,
+    fn = los_sse,
+    admissions = data$admissions,
+    census = data$census,
+    surv_fn = los_dist$surv_fn,
+    skip = skip,
+    lower = los_dist$lower,
+    method = "L-BFGS-B"
   )
   params <- setNames(exp(fit$par), los_dist$param_names)
   survival <- los_dist$surv_fn(fit$par)
   survival[!is.finite(survival)] <- 0
 
+  # Bootstrap parameter draws -> survival vectors, once.
   boot <- bootstrap_residual(data, params, los_dist, skip, n_boot)
+  boot_survivals <- apply(log(boot), 1, los_dist$surv_fn)
+  boot_survivals[!is.finite(boot_survivals)] <- 0
 
   idx <- seq(skip + 1, nrow(data))
-  preds <- apply(boot, 1, \(p) {
-    s <- los_dist$surv_fn(log(p))
-    s[!is.finite(s)] <- 0
-    predict_census(s, data$admissions)[idx]
-  })
+  preds <- apply(boot_survivals, 2, \(s) predict_census(s, data$admissions)[idx])
 
   list(
     params = as.list(params),
     survival = survival,
     boot_params = boot,
+    boot_survivals = boot_survivals,
     sse = fit$value,
     n_fit = length(idx),
     ci = tibble(
@@ -108,23 +127,4 @@ fit_los <- function(data, los_dist, skip = MAX_STAY, n_boot = 100) {
       upper = apply(preds, 1, quantile, 0.975)
     )
   )
-}
-
-# Fit LOS for every (state, season) with enough data. Seasons with
-# fewer than `min_fit_days` usable days (after the skip window) are
-# dropped. Returns one row per (state, season_year) with all fit_los
-# outputs unnested into columns.
-fit_los_all <- function(hhs, los_dist, min_fit_days = 30) {
-  hhs |>
-    mutate(season_year = season_of(date)) |>
-    nest(.by = c(state, season_year)) |>
-    filter(map_int(data, nrow) >= MAX_STAY + min_fit_days) |>
-    mutate(
-      res = future_map(
-        data, fit_los, los_dist,
-        .options = furrr_options(seed = TRUE)
-      )
-    ) |>
-    unnest_wider(res) |>
-    unnest_wider(params)
 }

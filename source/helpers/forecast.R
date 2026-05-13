@@ -26,13 +26,10 @@ lookup_survival <- function(los_fits, state_i, season_i) {
 
 # Bootstrap survivals for (state, previous-season) as a
 # (MAX_STAY+1) x n_boot matrix. NULL if not fit.
-lookup_boot_survivals <- function(los_fits, state_i, season_i, los_dist) {
+lookup_boot_survivals <- function(los_fits, state_i, season_i) {
   row <- los_fits |>
     filter(state == state_i, season_year == previous_season(season_i))
-  if (nrow(row) == 0) return(NULL)
-  surv <- apply(log(row$boot_params[[1]]), 1, los_dist$surv_fn)
-  surv[!is.finite(surv)] <- 0
-  surv
+  if (nrow(row) == 0) NULL else row$boot_survivals[[1]]
 }
 
 # One (state, forecast_date): hub admission trajectory -> census.
@@ -67,9 +64,9 @@ census_from_trajectory <- function(state_i, forecast_date_i, trajectory,
 # season's LOS isn't fit, or if the admission history / horizon window
 # isn't fully observed.
 census_from_truth <- function(state_i, forecast_date_i, hhs, los_fits,
-                              los_dist, horizons, q_levels) {
+                              horizons, q_levels) {
   boot_surv <- lookup_boot_survivals(
-    los_fits, state_i, season_of(forecast_date_i), los_dist
+    los_fits, state_i, season_of(forecast_date_i)
   )
   if (is.null(boot_surv)) return(NULL)
 
@@ -114,8 +111,7 @@ forecast_from_hub <- function(hub, hhs, los_fits) {
 # Census quantile forecast from observed admissions (LOS ceiling).
 # Uses the hub grid (same state-date pairs, same quantile levels) so
 # the two paths can be scored side by side.
-forecast_from_truth <- function(hub, hhs, los_fits, los_dist,
-                                horizons = 1:14) {
+forecast_from_truth <- function(hub, hhs, los_fits, horizons = 1:14) {
   q_levels <- hub |> pull(quantile) |> unique() |> sort()
   hub |>
     distinct(state, forecast_date) |>
@@ -123,7 +119,7 @@ forecast_from_truth <- function(hub, hhs, los_fits, los_dist,
       trajectory = future_pmap(
         list(state, forecast_date),
         census_from_truth,
-        hhs = hhs, los_fits = los_fits, los_dist = los_dist,
+        hhs = hhs, los_fits = los_fits,
         horizons = horizons, q_levels = q_levels,
         .options = furrr_options(seed = TRUE)
       )

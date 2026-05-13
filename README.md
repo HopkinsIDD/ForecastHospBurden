@@ -1,20 +1,14 @@
 # Forecasting Hospital Burden from COVID-19
 
-Turn hospital **admission** forecasts into hospital **census** forecasts, using a length-of-stay (LOS) distribution fitted per state and respiratory season.
+**What this does.** Take a daily admission forecast for COVID-19 hospitalizations and turn it into a forecast of the **census** — the number of patients in the hospital each day. Hospitals plan around census, but most public forecasting systems (COVIDhub, FluSight) only publish admissions. This pipeline bridges the two.
 
----
-
-## Goal
-
-Given daily admissions, how many people are in the hospital today?
-
-If we know how long patients stay, the census is just past admissions weighted by the chance each is still hospitalised:
+**Why it works.** If we know the probability that a patient is still hospitalised $d$ days after admission, today's census is past admissions weighted by that probability:
 
 $$
 \text{census}(t) = \sum_{s \le t} \text{admissions}(s) \cdot P(\text{LOS} > t - s)
 $$
 
-We fit the LOS from historical admissions + census, then apply it to admission *forecasts* to get census forecasts.
+The modelling task reduces to estimating the length-of-stay (LOS) survival function $P(\text{LOS} > d)$ from historical data, then applying it to admission *forecasts*.
 
 ---
 
@@ -23,7 +17,7 @@ We fit the LOS from historical admissions + census, then apply it to admission *
 ```mermaid
 flowchart TD
     A["<b>HHS data</b><br/>daily admissions + census per state"] --> B["<b>Fit LOS</b><br/>negbin per state × season<br/>(minimise SSE)"]
-    C["<b>Hubverse admission forecast</b><br/>quantile paths per state"] --> D["<b>Convolve</b><br/>admissions ∗ P(LOS > t)<br/>using previous season's LOS"]
+    C["<b>Hubverse admission forecast</b><br/>quantile paths per state"] --> D["<b>Convolve</b><br/>admissions ∗ P(LOS > d)<br/>using previous season's LOS"]
     B --> D
     D --> E["<b>Census forecast</b><br/>quantile paths per state"]
     E --> F["<b>Validate</b><br/>fan chart · WIS by horizon"]
@@ -44,34 +38,38 @@ flowchart TD
 
 ## Model
 
-A parametric **negative-binomial LOS** (mean $\mu$, dispersion $\k$). The survival function $P(\text{LOS} > k)$ is convolved with admissions to predict census.
+We assume length of stay follows a **negative-binomial distribution** with mean $\mu$ and dispersion $k$. One $(\mu, k)$ pair is estimated per (state, respiratory season). The fitted distribution gives a survival function $P(\text{LOS} > d)$ which, when convolved with admissions, predicts census.
 
-Other families (normal, lognormal, geometric) live in `distributions.R` for the accessory comparison; the production pipeline uses negbin only.
+We estimate $\mu$ and $k$ by minimising the squared error between the observed census and the convolution of admissions with the implied survival function. Optimisation uses L-BFGS-B in log space so the parameters stay positive. Parameter uncertainty comes from a **residual bootstrap** — 100 refits on resampled residuals.
 
-**`MAX_STAY = 50` days** ties together three things:
-- length of the LOS survival vector,
-- days discarded at the start of each state-season when fitting (census in this period depends on unobserved prior admissions),
-- days of observed admissions prepended before each forecast, so the first forecast day already has a full 50-day history.
+Three other LOS families (normal, lognormal, geometric) are implemented in `distributions.R` for comparison; the production pipeline uses negbin only.
 
----
+**`MAX_STAY = 50` days** is the largest LOS we model, with $P(\text{LOS} > 50) \approx 0$. It governs three things:
 
-## Fitting
-
-For each (state, season), minimise SSE between observed and predicted census using L-BFGS-B. Parameters are optimised in log space to stay positive. Uncertainty comes from a **residual bootstrap**: resample residuals, refit, repeat 100 times.
+- the length of every survival vector,
+- the burn-in dropped at the start of each fit window (early census depends on unobserved prior admissions),
+- the days of observed admissions prepended before each forecast, so day 1 already has a full history.
 
 ---
 
 ## Out-of-sample forecasting
 
-We forecast census using LOS estimates from the previous season for a given state.
-To forecast into **Winter 2024-25** we use the **Winter 2023-24** LOS fit; for **Summer 2024** we use **Summer 2023**.
+For each (state, forecast_date) we convolve the COVIDhub admission quantile forecast with the **previous same-kind season's LOS** — Winter 2024-25 uses Winter 2023-24, Summer 2024 uses Summer 2023. No current-season data enters the LOS at forecast time, so evaluation is genuinely out-of-sample.
+
+We run this two ways and keep both for diagnostics:
+
+- **`ensemble+LOS`** — hub admission forecast → census. The production output. Spread is inherited from the hub.
+- **`truth+LOS`** — observed admissions → census, with spread from the LOS bootstrap. This is the LOS-only error floor: census error if admissions were known perfectly.
+
+The difference between the two decomposes census error into a part attributable to the upstream admission forecast and a part attributable to LOS estimation.
 
 ---
 
 ## Validation
 
-- **Fan chart** per (state, forecast_date): 50% + 95% prediction intervals for admissions and census, with observed overlaid.
+- **Fan chart** per (state, forecast_date): 50% and 95% prediction intervals for admissions and census, observed overlaid.
 - **WIS by horizon** via `scoringutils`, averaged per state.
+- **Census error decomposition**: stack `truth+LOS` (LOS floor) and the residual `ensemble+LOS − truth+LOS` (admission-induced) per horizon.
 
 ---
 
@@ -80,21 +78,15 @@ To forecast into **Winter 2024-25** we use the **Winter 2023-24** LOS fit; for *
 ```
 source/
 ├── main.R                 # end-to-end pipeline
-└── helpers/
-    ├── packages.R         # library imports
-    ├── data.R             # load_hhs(), load_hub()
-    ├── seasons.R          # season_of(), previous_season()
-    ├── distributions.R    # MAX_STAY + dist_* survival kernels
-    ├── los.R              # predict_census(), fit_los(), fit_los_all()
-    ├── forecast.R         # forecast_from_hub(), forecast_from_truth()
-    ├── baseline.R         # baseline_from_observed() — rWIS reference
-    ├── score.R            # score_forecast(), relative_wis(), WIS/rWIS plots
-    └── plots.R            # plot_trajectories()
+├── helpers/
+│   ├── packages.R         # library imports
+│   ├── data.R             # load_hhs(), load_hub()
+│   ├── seasons.R          # season_of(), previous_season()
+│   ├── distributions.R    # MAX_STAY + dist_* survival kernels
+│   ├── los.R              # predict_census(), fit_los(), fit_los_all()
+│   ├── forecast.R         # forecast_from_hub(), forecast_from_truth()
+│   ├── baseline.R         # baseline_from_observed() — rWIS reference
+│   ├── score.R            # score_forecast(), relative_wis()
+│   └── plots.R            # plot_trajectories()
+└── misc/                  # off-pipeline experiments
 ```
-
-### NOTE FOR REVIEW
-Convolution of quantiles holds exactly only if the admission-quantile paths are comonotonic across time (each quantile level is one coherent trajectory). The hub gives you per-date marginal quantiles, so you're implicitly assuming perfect rank correlation across horizons. That's the standard hub convention.
-
-We are implicitly assuming:
-The same trajectory sits at the same quantile level at every time point.
-That is perfect rank correlation across time.

@@ -14,13 +14,13 @@ MAX_STAY <- 50L
 # Each dist_* bundles everything fit_los() needs:
 #   name         short label.
 #   param_names  natural-scale parameter names.
-#   surv_fn      returns P(LOS > k) for k = 0..max_stay, given
+#   surv_fn      returns P(LOS > d) for d = 0..max_stay, given
 #                log-scale parameters.
 #   init, lower  log-scale starting values and bounds for optim().
 #
 # Parameters are optimised in log space so they stay positive;
 # surv_fn exponentiates internally. The production pipeline uses
-# dist_negbin only; the others exist for misc/compare_negbin_vs_normal.R.
+# dist_negbin only.
 
 # Negative binomial LOS (mean mu, dispersion k). Main model.
 dist_negbin <- list(
@@ -60,7 +60,7 @@ dist_lognormal <- list(
   lower = c(-Inf, log(1e-6))
 )
 
-# Geometric LOS parameterised by mean mu: P(LOS > k) = (mu/(mu+1))^(k+1).
+# Geometric LOS parameterised by mean mu: P(LOS > d) = (mu/(mu+1))^(d+1).
 # Single-parameter baseline, no dispersion.
 dist_geometric <- list(
   name = "geometric",
