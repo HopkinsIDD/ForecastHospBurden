@@ -23,9 +23,9 @@ season_of <- function(date) {
 #   previous_season("Winter 2024-25")  # "Winter 2023-24"
 previous_season <- function(s) {
   yr <- as.integer(str_extract(s, "\\d{4}"))
-  if (str_starts(s, "Summer")) {
-    sprintf("Summer %d", yr - 1L)
-  } else {
+  if_else(
+    str_starts(s, "Summer"),
+    sprintf("Summer %d", yr - 1L),
     sprintf("Winter %d-%02d", yr - 1L, yr %% 100L)
-  }
+  )
 }

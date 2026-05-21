@@ -40,9 +40,9 @@ flowchart TD
 
 We assume length of stay follows a **negative-binomial distribution** with mean $\mu$ and dispersion $k$. One $(\mu, k)$ pair is estimated per (state, respiratory season). The fitted distribution gives a survival function $P(\text{LOS} > d)$ which, when convolved with admissions, predicts census.
 
-We estimate $\mu$ and $k$ by minimising the squared error between the observed census and the convolution of admissions with the implied survival function. Optimisation uses L-BFGS-B in log space so the parameters stay positive. Parameter uncertainty comes from a **residual bootstrap** — 100 refits on resampled residuals.
+The LOS fit, the census forecast, and the WIS scoring are all done by the [`censcast`](https://github.com/ACCIDDA/censcast) package. `censcast::fit_los()` minimises the squared error between the observed census and the convolution of admissions with the implied survival function, optimising L-BFGS-B in log space so the parameters stay positive. Three other families (normal, lognormal, geometric) are available via the `family` argument; the production pipeline uses negbin only.
 
-Three other LOS families (normal, lognormal, geometric) are implemented in `distributions.R` for comparison; the production pipeline uses negbin only.
+Parameter uncertainty for the `truth+LOS` path comes from a **residual bootstrap** (100 refits on resampled residuals), implemented locally in `helpers/bootstrap.R` because censcast intentionally returns only the point estimate.
 
 **`MAX_STAY = 50` days** is the largest LOS we model, with $P(\text{LOS} > 50) \approx 0$. It governs three things:
 
@@ -77,16 +77,12 @@ The difference between the two decomposes census error into a part attributable 
 
 ```
 source/
-├── main.R                 # end-to-end pipeline
-├── helpers/
-│   ├── packages.R         # library imports
-│   ├── data.R             # load_hhs(), load_hub()
-│   ├── seasons.R          # season_of(), previous_season()
-│   ├── distributions.R    # MAX_STAY + dist_* survival kernels
-│   ├── los.R              # predict_census(), fit_los(), fit_los_all()
-│   ├── forecast.R         # forecast_from_hub(), forecast_from_truth()
-│   ├── baseline.R         # baseline_from_observed() — rWIS reference
-│   ├── score.R            # score_forecast(), relative_wis()
-│   └── plots.R            # plot_trajectories()
-└── misc/                  # off-pipeline experiments
+├── main.R                 # end to end pipeline
+└── helpers/
+    ├── packages.R         # library imports (incl. censcast)
+    ├── data.R             # load_hhs(), load_hub()
+    ├── seasons.R          # season_of(), previous_season()
+    └── bootstrap.R        # residual bootstrap for the truth+LOS path
 ```
+
+LOS fitting, admission to census convolution, scoring, and plotting all come from [`censcast`](https://github.com/ACCIDDA/censcast).
